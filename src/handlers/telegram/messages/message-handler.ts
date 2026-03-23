@@ -7,6 +7,7 @@ import { MessageFormatter } from '../../../utils/formatter';
 import { MESSAGES } from '../../../constants/messages';
 import { ClaudeManager } from '../../claude';
 import { ProjectHandler } from '../project/project-handler';
+import { FileBrowserHandler } from '../file-browser/file-browser-handler';
 import { TelegramSender } from '../../../services/telegram-sender';
 import { KeyboardFactory } from '../keyboards/keyboard-factory';
 import { Config } from '../../../config/config';
@@ -21,7 +22,8 @@ export class MessageHandler {
     private claudeSDK: ClaudeManager,
     private projectHandler: ProjectHandler,
     private bot: Telegraf,
-    private config: Config
+    private config: Config,
+    private fileBrowserHandler?: FileBrowserHandler
   ) {
     this.telegramSender = new TelegramSender(bot);
   }
@@ -31,10 +33,10 @@ export class MessageHandler {
     const chatId = ctx.chat.id;
     const text = ctx.message.text;
 
-    const user = await this.storage.getUserSession(chatId);
+    let user = await this.storage.getUserSession(chatId);
     if (!user) {
-      await this.sendHelp(ctx);
-      return;
+      user = new UserSessionModel(chatId);
+      await this.storage.saveUserSession(user);
     }
 
     switch (user.state) {
@@ -43,6 +45,13 @@ export class MessageHandler {
         break;
       case UserState.WaitingDirectory:
         await this.projectHandler.handleDirectoryInput(ctx, user, text);
+        break;
+      case UserState.WaitingPickerSearch:
+        if (this.fileBrowserHandler) {
+          await this.fileBrowserHandler.handlePickerSearchInput(chatId, text);
+          user.setState(UserState.WaitingDirectory);
+          await this.storage.saveUserSession(user);
+        }
         break;
       case UserState.WaitingASREdit:
         await this.handleASREditInput(ctx, user, text);
@@ -73,10 +82,7 @@ export class MessageHandler {
     const chatId = ctx.chat.id;
 
     const user = await this.storage.getUserSession(chatId);
-    if (!user) {
-      await this.sendHelp(ctx);
-      return;
-    }
+    if (!user) return;
 
     if (user.state !== UserState.InSession) {
       await ctx.reply(this.formatter.formatError('You must be in an active session to send images.'), { parse_mode: 'MarkdownV2' });
@@ -108,10 +114,7 @@ export class MessageHandler {
     const chatId = ctx.chat.id;
 
     const user = await this.storage.getUserSession(chatId);
-    if (!user) {
-      await this.sendHelp(ctx);
-      return;
-    }
+    if (!user) return;
 
     if (user.state !== UserState.InSession) {
       await ctx.reply(this.formatter.formatError('You must be in an active session to send voice messages.'), { parse_mode: 'MarkdownV2' });

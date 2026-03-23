@@ -81,6 +81,29 @@ async function main(): Promise<void> {
     // Start bot based on mode
     console.log(`Starting Telegram bot in ${config.telegram.mode} mode...`);
     
+    // Register bot commands menu
+    await bot.telegram.setMyCommands([
+      { command: 'start', description: 'Start Clink Code' },
+      { command: 'createproject', description: 'Create a new project' },
+      { command: 'listproject', description: 'Browse existing projects' },
+      { command: 'exitproject', description: 'Exit current project' },
+      { command: 'model', description: 'Change Claude model' },
+      { command: 'resume', description: 'Resume a previous session' },
+      { command: 'clear', description: 'Clear current session' },
+      { command: 'abort', description: 'Abort current query' },
+      { command: 'status', description: 'Show current status' },
+      { command: 'diff', description: 'View git diff of current project' },
+      { command: 'ls', description: 'Browse project files' },
+      { command: 'default', description: 'Standard permission mode' },
+      { command: 'acceptedits', description: 'Auto-accept file edits' },
+      { command: 'plan', description: 'Analysis only, no modifications' },
+      { command: 'bypass', description: 'Skip all permission prompts' },
+      { command: 'auth', description: 'Authenticate with secret token' },
+      { command: 'resetonboarding', description: 'Redo the setup wizard' },
+      { command: 'help', description: 'Show help' },
+    ]);
+    console.log('Bot commands menu registered');
+
     if (config.telegram.mode === 'webhook') {
       console.log('Telegram bot is running in webhook mode');
     } else {

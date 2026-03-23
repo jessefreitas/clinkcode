@@ -209,5 +209,71 @@ Permission mode: ${permissionMode}`,
     PROJECT_LIST: '📋 Project List',
     APPROVE: '✅ Allow',
     DENY: '❌ Deny',
-  }
+  },
+
+  // Onboarding messages
+  ONBOARDING: {
+    WELCOME: `🚀 *Welcome to Clink Code!*
+
+Clink Code is your Telegram gateway to Claude Code — powerful AI-assisted coding directly from Telegram.
+
+*What you can do:*
+• Create projects from GitHub repos or local directories
+• Chat with Claude to analyze, edit, and create code
+• Use voice messages and images as input
+• Manage multiple projects and sessions
+
+Let's get you set up!`,
+
+    DISCLAIMER: `⚠️ *Security Disclaimer*
+
+Before using Clink Code, please understand:
+
+• Claude Code can *read, edit, and execute* code in your projects
+• Always *review changes* before approving them
+• Use *permission modes* to control Claude's capabilities
+• Never share sensitive credentials in conversations
+• You are responsible for all code changes made
+
+By continuing, you acknowledge and accept these terms.`,
+
+    MODEL_SELECTION: `🤖 *Choose Your Default Model*
+
+Select the Claude model you'd like to use:
+
+*Opus 4.5* — Most capable, best for complex tasks
+*Sonnet 4.5* — Balanced performance and speed
+*Haiku 4.5* — Fastest, best for simple tasks
+
+You can change this anytime with /model.`,
+
+    PROJECT_GUIDE: `📁 *Create Your First Project*
+
+Would you like to set up your first project now?
+
+*GitHub Repository* — Clone and work with a repo
+*Local Directory* — Use an existing directory
+
+Or skip and create a project later with /createproject.`,
+
+    COMPLETED: `✅ *Setup Complete!*
+
+You're ready to use Clink Code.
+
+*Quick Start:*
+• /createproject — Create a new project
+• /listproject — Browse existing projects
+• /model — Change Claude model
+• /help — View all commands
+
+Start by creating or selecting a project!`,
+
+    DECLINE_WARNING: `⚠️ You must accept the disclaimer to use Clink Code.
+
+The disclaimer ensures you understand the security implications of using AI-assisted coding tools.`,
+
+    WELCOME_RETURNING: `👋 *Welcome back!*
+
+Use /createproject to start a new project or /listproject to continue with an existing one.`,
+  },
 };

@@ -6,11 +6,16 @@ import { MessageFormatter } from '../../../utils/formatter';
 import { Config } from '../../../config/config';
 import { KeyboardFactory } from '../keyboards/keyboard-factory';
 import { AuthService } from '../../../services/auth-service';
+import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+import { execFile } from 'child_process';
 import { TelegramSender } from '../../../services/telegram-sender';
 
 export class FileBrowserHandler {
   private fileBrowsingStates: Map<number, FileBrowsingState> = new Map();
+  private pickerStates: Map<number, FileBrowsingState> = new Map();
+  private searchResults: Map<number, string[]> = new Map();
   private authService: AuthService;
   private telegramSender: TelegramSender;
 
@@ -330,4 +335,302 @@ export class FileBrowserHandler {
     return message;
   }
 
+  // Directory picker methods for project selection
+  async startDirectoryPicker(chatId: number, startPath?: string): Promise<void> {
+    const initialPath = startPath || os.homedir();
+
+    try {
+      const items = await this.directory.listDirectoryContents(initialPath);
+
+      const browsingState: FileBrowsingState = {
+        currentPath: initialPath,
+        basePath: '/', // Allow navigating anywhere
+        currentPage: 1,
+        itemsPerPage: 12,
+        totalItems: items.length,
+        items
+      };
+
+      this.pickerStates.set(chatId, browsingState);
+      await this.sendPickerListing(chatId, browsingState);
+    } catch (error) {
+      await this.bot.telegram.sendMessage(
+        chatId,
+        this.formatter.formatError(`Failed to access directory: ${error instanceof Error ? error.message : 'Unknown error'}`),
+        { parse_mode: 'MarkdownV2' }
+      );
+    }
+  }
+
+  async handleDirectoryPickerCallback(data: string, chatId: number, messageId?: number): Promise<string | null | undefined | 'search'> {
+    // Handle search-related callbacks that don't need browsingState
+    if (data === 'pick_search_cancel') {
+      this.searchResults.delete(chatId);
+      if (messageId) {
+        try { await this.bot.telegram.deleteMessage(chatId, messageId); } catch {}
+      }
+      await this.reshowPicker(chatId);
+      return undefined;
+    }
+    if (data.startsWith('pick_goto:')) {
+      const encoded = data.substring(10);
+      const results = this.searchResults.get(chatId);
+      if (results) {
+        const match = results.find(r => Buffer.from(r).toString('base64').substring(0, 49) === encoded);
+        if (match) {
+          this.searchResults.delete(chatId);
+          if (messageId) {
+            try { await this.bot.telegram.deleteMessage(chatId, messageId); } catch {}
+          }
+          await this.navigatePickerTo(chatId, match);
+          return undefined;
+        }
+      }
+      return undefined;
+    }
+
+    const browsingState = this.pickerStates.get(chatId);
+    if (!browsingState) {
+      await this.bot.telegram.sendMessage(chatId, this.formatter.formatError('Directory picker session expired. Please try again.'), { parse_mode: 'MarkdownV2' });
+      return null;
+    }
+
+    try {
+      if (data === 'pick_select') {
+        // User selected current directory
+        const selectedPath = browsingState.currentPath;
+        this.pickerStates.delete(chatId);
+
+        if (messageId) {
+          try { await this.bot.telegram.deleteMessage(chatId, messageId); } catch {}
+        }
+
+        return selectedPath;
+      } else if (data === 'pick_search') {
+        // Prompt user to type a path or search term
+        if (messageId) {
+          try { await this.bot.telegram.deleteMessage(chatId, messageId); } catch {}
+        }
+        await this.bot.telegram.sendMessage(chatId, '🔍 Type a folder name to search or an absolute path:\n\nExamples:\n• `myproject` — search by name\n• `/Users/jones/projects` — go to path', { parse_mode: 'Markdown' });
+        return 'search'; // Signal to caller to set WaitingPickerSearch state
+      } else if (data === 'pick_cancel') {
+        this.pickerStates.delete(chatId);
+
+        if (messageId) {
+          try { await this.bot.telegram.deleteMessage(chatId, messageId); } catch {}
+        }
+
+        return null;
+      } else if (data.startsWith('pick_dir:')) {
+        const dirName = decodeURIComponent(data.substring(9));
+        const newPath = path.join(browsingState.currentPath, dirName);
+
+        const items = await this.directory.listDirectoryContents(newPath);
+        const newState: FileBrowsingState = {
+          currentPath: newPath,
+          basePath: '/',
+          currentPage: 1,
+          itemsPerPage: browsingState.itemsPerPage,
+          totalItems: items.length,
+          items
+        };
+
+        this.pickerStates.set(chatId, newState);
+
+        if (messageId) {
+          await this.updatePickerListing(chatId, messageId, newState);
+        } else {
+          await this.sendPickerListing(chatId, newState);
+        }
+      } else if (data.startsWith('pick_nav:')) {
+        const action = data.substring(9);
+
+        if (action === 'parent') {
+          const parentPath = path.dirname(browsingState.currentPath);
+          if (parentPath !== browsingState.currentPath) {
+            const items = await this.directory.listDirectoryContents(parentPath);
+            const newState: FileBrowsingState = {
+              currentPath: parentPath,
+              basePath: '/',
+              currentPage: 1,
+              itemsPerPage: browsingState.itemsPerPage,
+              totalItems: items.length,
+              items
+            };
+
+            this.pickerStates.set(chatId, newState);
+
+            if (messageId) {
+              await this.updatePickerListing(chatId, messageId, newState);
+            } else {
+              await this.sendPickerListing(chatId, newState);
+            }
+          }
+        } else if (action.startsWith('page:')) {
+          const page = parseInt(action.substring(5));
+          const newState = { ...browsingState, currentPage: page };
+          this.pickerStates.set(chatId, newState);
+
+          if (messageId) {
+            await this.updatePickerListing(chatId, messageId, newState);
+          } else {
+            await this.sendPickerListing(chatId, newState);
+          }
+        }
+      }
+    } catch (error) {
+      await this.bot.telegram.sendMessage(
+        chatId,
+        this.formatter.formatError(`Navigation failed: ${error instanceof Error ? error.message : 'Unknown error'}`),
+        { parse_mode: 'MarkdownV2' }
+      );
+    }
+
+    return undefined; // Continue browsing (not a terminal action)
+  }
+
+  private async sendPickerListing(chatId: number, browsingState: FileBrowsingState): Promise<void> {
+    const message = this.formatPickerMessage(browsingState);
+    const keyboard = KeyboardFactory.createDirectoryPickerKeyboard(browsingState);
+
+    const sentMessage = await this.telegramSender.safeSendMessage(chatId, message, keyboard);
+    const updatedState = { ...browsingState, messageId: sentMessage.message_id };
+    this.pickerStates.set(chatId, updatedState);
+  }
+
+  private async updatePickerListing(chatId: number, messageId: number, browsingState: FileBrowsingState): Promise<void> {
+    const message = this.formatPickerMessage(browsingState);
+    const keyboard = KeyboardFactory.createDirectoryPickerKeyboard(browsingState);
+
+    try {
+      await this.telegramSender.safeEditMessage(chatId, messageId, message, keyboard);
+    } catch (error) {
+      await this.sendPickerListing(chatId, browsingState);
+    }
+  }
+
+  async handlePickerSearchInput(chatId: number, query: string): Promise<boolean> {
+    const trimmed = query.trim();
+
+    // If it's an absolute path, navigate directly
+    if (trimmed.startsWith('/')) {
+      if (await this.directory.validateDirectory(trimmed)) {
+        return this.navigatePickerTo(chatId, trimmed);
+      }
+      await this.bot.telegram.sendMessage(chatId, this.formatter.formatError(`Directory not found: ${trimmed}`), { parse_mode: 'MarkdownV2' });
+      return this.reshowPicker(chatId);
+    }
+
+    // Otherwise, search for matching directories from home
+    await this.bot.telegram.sendMessage(chatId, `🔍 Searching for "${trimmed}"...`);
+
+    const results = await this.searchDirectories(os.homedir(), trimmed);
+
+    if (results.length === 0) {
+      await this.bot.telegram.sendMessage(chatId, `No directories matching "${trimmed}" found.`);
+      return this.reshowPicker(chatId);
+    }
+
+    // Show results as a list of buttons
+    const keyboard = results.slice(0, 20).map(dir => [
+      Markup.button.callback(
+        `📁 ${dir.replace(os.homedir(), '~')}`,
+        `pick_goto:${Buffer.from(dir).toString('base64').substring(0, 49)}`
+      )
+    ]);
+    keyboard.push([Markup.button.callback('❌ Cancel search', 'pick_search_cancel')]);
+
+    // Store the result paths for lookup
+    this.searchResults.set(chatId, results.slice(0, 20));
+
+    await this.bot.telegram.sendMessage(
+      chatId,
+      `🔍 Found ${results.length} match${results.length > 1 ? 'es' : ''} for "${trimmed}":`,
+      { reply_markup: Markup.inlineKeyboard(keyboard).reply_markup }
+    );
+    return true;
+  }
+
+  private async searchDirectories(root: string, query: string): Promise<string[]> {
+    const lowerQuery = query.toLowerCase();
+
+    return new Promise((resolve) => {
+      // Use system `find` for speed — case-insensitive, dirs only, max depth 5, prune heavy dirs
+      const args = [
+        root,
+        '-maxdepth', '5',
+        '-type', 'd',
+        '(', '-name', 'node_modules', '-o', '-name', '.git', '-o', '-name', '__pycache__', '-o', '-name', '.venv', '-o', '-name', 'venv', ')',
+        '-prune', '-o',
+        '-type', 'd',
+        '-iname', `*${query}*`,
+        '-print',
+      ];
+
+      const proc = execFile('find', args, { timeout: 3000, maxBuffer: 1024 * 256 }, (error, stdout) => {
+        if (!stdout) {
+          resolve([]);
+          return;
+        }
+
+        const results = stdout.trim().split('\n').filter(Boolean).slice(0, 20);
+
+        // Sort: exact name matches first, then by path depth
+        results.sort((a, b) => {
+          const nameA = path.basename(a).toLowerCase();
+          const nameB = path.basename(b).toLowerCase();
+          const exactA = nameA === lowerQuery ? 0 : 1;
+          const exactB = nameB === lowerQuery ? 0 : 1;
+          if (exactA !== exactB) return exactA - exactB;
+          return a.split('/').length - b.split('/').length;
+        });
+
+        resolve(results);
+      });
+
+      // Kill if still running after 3s
+      setTimeout(() => { try { proc.kill(); } catch {} }, 3000);
+    });
+  }
+
+  private async navigatePickerTo(chatId: number, dirPath: string): Promise<boolean> {
+    const items = await this.directory.listDirectoryContents(dirPath);
+    const newState: FileBrowsingState = {
+      currentPath: dirPath,
+      basePath: '/',
+      currentPage: 1,
+      itemsPerPage: 12,
+      totalItems: items.length,
+      items
+    };
+    this.pickerStates.set(chatId, newState);
+    await this.sendPickerListing(chatId, newState);
+    return true;
+  }
+
+  private async reshowPicker(chatId: number): Promise<boolean> {
+    const state = this.pickerStates.get(chatId);
+    if (state) {
+      await this.sendPickerListing(chatId, state);
+    }
+    return false;
+  }
+
+  private formatPickerMessage(browsingState: FileBrowsingState): string {
+    const { currentPath, currentPage, itemsPerPage, items } = browsingState;
+
+    const dirCount = items.filter(item => item.type === 'directory').length;
+    const totalPages = Math.ceil(dirCount / itemsPerPage) || 1;
+
+    let message = `📂 **Select a directory**\n\n`;
+    message += `📍 **${currentPath}**\n`;
+    message += `📁 ${dirCount} subdirectories\n\n`;
+    message += `Navigate into a folder or tap "Select This Directory" to choose the current location.`;
+
+    if (totalPages > 1) {
+      message += `\n\n📄 Page ${currentPage}/${totalPages}`;
+    }
+
+    return message;
+  }
 }

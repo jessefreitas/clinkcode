@@ -162,6 +162,59 @@ export class ProjectHandler {
     }
   }
 
+  async createProjectFromPath(chatId: number, directoryPath: string): Promise<boolean> {
+    const user = await this.storage.getUserSession(chatId);
+    if (!user) return false;
+
+    const resolvedPath = this.directory.resolvePath(directoryPath);
+
+    if (!await this.directory.validateDirectory(resolvedPath)) {
+      await this.bot.telegram.sendMessage(chatId, this.formatter.formatError(MESSAGES.ERRORS.DIRECTORY_NOT_FOUND), { parse_mode: 'MarkdownV2' });
+      return false;
+    }
+
+    try {
+      const dirInfo = await this.directory.getDirectoryInfo(resolvedPath);
+
+      const confirmText = MESSAGES.DIRECTORY_CONFIRMATION_TEXT(
+        dirInfo.name,
+        resolvedPath,
+        dirInfo.files,
+        dirInfo.directories,
+        dirInfo.lastModified
+      );
+      await this.bot.telegram.sendMessage(chatId, confirmText);
+
+      const projectId = resolvedPath.replace(/\//g, '-');
+      const project = createProject(
+        projectId,
+        user.chatId,
+        dirInfo.name,
+        resolvedPath,
+        'local'
+      );
+
+      await this.storage.saveProject(project);
+      user.setActiveProject(projectId, resolvedPath);
+      user.setState(UserState.InSession);
+      user.setActive(true);
+      delete user.sessionId;
+      await this.storage.saveUserSession(user);
+
+      const successText = MESSAGES.PROJECT_SUCCESS_TEXT(
+        project.name,
+        projectId,
+        undefined,
+        project.localPath
+      );
+      await this.bot.telegram.sendMessage(chatId, successText);
+      return true;
+    } catch (error) {
+      await this.bot.telegram.sendMessage(chatId, this.formatter.formatError(MESSAGES.ERRORS.PROJECT_CREATION_FAILED(error instanceof Error ? error.message : 'Unknown error')), { parse_mode: 'MarkdownV2' });
+      return false;
+    }
+  }
+
   async startProjectCreation(ctx: Context, user: UserSessionModel, repoUrl: string): Promise<void> {
     if (user.state !== UserState.Idle) {
       await ctx.reply(this.formatter.formatError(MESSAGES.ERRORS.COMPLETE_CURRENT_OPERATION), { parse_mode: 'MarkdownV2' });

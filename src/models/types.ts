@@ -5,6 +5,12 @@ export enum UserState {
   WaitingDirectory = 'waiting_directory',
   InSession = 'in_session',
   WaitingASREdit = 'waiting_asr_edit',
+  WaitingPickerSearch = 'waiting_picker_search',
+  // Onboarding states
+  OnboardingWelcome = 'onboarding_welcome',
+  OnboardingDisclaimer = 'onboarding_disclaimer',
+  OnboardingModel = 'onboarding_model',
+  OnboardingProject = 'onboarding_project',
 }
 
 export enum ProjectType {

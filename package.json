@@ -23,6 +23,7 @@
     "@gramio/split": "^0.0.1",
     "@modelcontextprotocol/sdk": "^1.17.0",
     "diff": "^8.0.2",
+    "diff2html": "^3.4.56",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "markdown-it": "^14.1.0",
