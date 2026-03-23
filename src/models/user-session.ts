@@ -1,4 +1,5 @@
 import { UserState, PermissionMode, FileBrowsingState, ClaudeModel, DEFAULT_MODEL } from './types';
+import { isOnboardingCompleted, markOnboardingCompleted, resetOnboardingStatus } from '../services/onboarding-store';
 
 export interface UserSession {
   chatId: number;
@@ -133,6 +134,19 @@ export class UserSessionModel {
     return this.currentModel;
   }
 
+  // Onboarding methods (delegated to persistent file store)
+  setOnboardingCompleted(completed: boolean): void {
+    if (completed) {
+      markOnboardingCompleted(this.chatId);
+    } else {
+      resetOnboardingStatus(this.chatId);
+    }
+  }
+
+  hasCompletedOnboarding(): boolean {
+    return isOnboardingCompleted(this.chatId);
+  }
+
   // File browsing methods
   setFileBrowsingState(state: FileBrowsingState): void {
     this.fileBrowsingState = state;
@@ -179,6 +193,12 @@ export class UserSessionModel {
     userSession.permissionMode = data.permissionMode || PermissionMode.Default;
     userSession.fileBrowsingState = data.fileBrowsingState;
     userSession.authenticated = data.authenticated || false;
+
+    // Restore InSession state if project is active but state was saved as idle
+    if (userSession.activeProject && userSession.projectPath && userSession.state === UserState.Idle) {
+      userSession.state = UserState.InSession;
+      userSession.active = true;
+    }
     userSession.currentModel = data.currentModel || DEFAULT_MODEL;
 
     return userSession;

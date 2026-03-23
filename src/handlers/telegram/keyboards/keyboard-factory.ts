@@ -135,7 +135,7 @@ export class KeyboardFactory {
     return Markup.inlineKeyboard(keyboard);
   }
 
-  static createClaudeProjectListKeyboard(projects: ClaudeProject[]): any {
+  static createClaudeProjectListKeyboard(projects: ClaudeProject[], showCreateButtons: boolean = true): any {
     const keyboard = [];
 
     // Add project buttons (1 per row)
@@ -161,6 +161,14 @@ export class KeyboardFactory {
           `📂 ${displayName} (${dateStr})`,
           `claude_project_${shortId}`
         )
+      ]);
+    }
+
+    // Add create new project buttons
+    if (showCreateButtons) {
+      keyboard.push([
+        Markup.button.callback('🔗 GitHub Repository', 'project_type_github'),
+        Markup.button.callback('📂 Local Directory', 'project_type_directory')
       ]);
     }
 
@@ -215,5 +223,103 @@ export class KeyboardFactory {
     });
 
     return Markup.inlineKeyboard([buttons, [Markup.button.callback('❌ Cancel', 'cancel')]]);
+  }
+
+  // Onboarding keyboards
+  static createOnboardingWelcomeKeyboard(): any {
+    return Markup.inlineKeyboard([
+      [Markup.button.callback('➡️ Continue', 'onboarding_continue')]
+    ]);
+  }
+
+  static createOnboardingDisclaimerKeyboard(): any {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('❌ Decline', 'onboarding_decline'),
+        Markup.button.callback('✅ I Accept', 'onboarding_accept')
+      ]
+    ]);
+  }
+
+  static createOnboardingModelKeyboard(currentModel: ClaudeModel): any {
+    const buttons = AVAILABLE_MODELS.map(model => {
+      const isSelected = model.value === currentModel;
+      const label = isSelected ? `${model.displayName} ✓` : model.displayName;
+      return Markup.button.callback(label, `onboarding_model:${model.value}`);
+    });
+
+    return Markup.inlineKeyboard([
+      buttons,
+      [Markup.button.callback('➡️ Continue', 'onboarding_model_done')]
+    ]);
+  }
+
+  static createDirectoryPickerKeyboard(browsingState: any): any {
+    const { currentPage, itemsPerPage, totalItems, items } = browsingState;
+    const keyboard = [];
+
+    // Calculate pagination
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+    const pageItems = items.slice(startIndex, endIndex);
+
+    // Show only directories (2 per row)
+    const dirItems = pageItems.filter((item: any) => item.type === 'directory');
+    for (let i = 0; i < dirItems.length; i += 2) {
+      const row = [];
+      const item1 = dirItems[i];
+      const item2 = dirItems[i + 1];
+
+      if (item1) {
+        row.push(Markup.button.callback(
+          `📁 ${item1.name}`,
+          `pick_dir:${encodeURIComponent(item1.name)}`
+        ));
+      }
+      if (item2) {
+        row.push(Markup.button.callback(
+          `📁 ${item2.name}`,
+          `pick_dir:${encodeURIComponent(item2.name)}`
+        ));
+      }
+      if (row.length > 0) {
+        keyboard.push(row);
+      }
+    }
+
+    // Navigation buttons
+    const navRow = [];
+    if (currentPage > 1) {
+      navRow.push(Markup.button.callback('⬅️ Previous', `pick_nav:page:${currentPage - 1}`));
+    }
+    navRow.push(Markup.button.callback('📂 Parent', 'pick_nav:parent'));
+    if (currentPage < totalPages) {
+      navRow.push(Markup.button.callback('Next ➡️', `pick_nav:page:${currentPage + 1}`));
+    }
+    keyboard.push(navRow);
+
+    // Search button
+    keyboard.push([
+      Markup.button.callback('🔍 Search / Go to path', 'pick_search')
+    ]);
+
+    // Action buttons: Select this directory + Cancel
+    keyboard.push([
+      Markup.button.callback('✅ Select This Directory', 'pick_select'),
+      Markup.button.callback('❌ Cancel', 'pick_cancel')
+    ]);
+
+    return Markup.inlineKeyboard(keyboard);
+  }
+
+  static createOnboardingProjectKeyboard(): any {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('🔗 GitHub Repository', 'onboarding_project_github'),
+        Markup.button.callback('📂 Local Directory', 'onboarding_project_local')
+      ],
+      [Markup.button.callback('⏭️ Skip for Now', 'onboarding_skip')]
+    ]);
   }
 }

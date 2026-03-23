@@ -9,6 +9,7 @@ import { ClaudeSessionReader } from '../../../utils/claude-session-reader';
 import { ClaudeManager } from '../../claude';
 import { KeyboardFactory } from '../keyboards/keyboard-factory';
 import { TelegramSender } from '../../../services/telegram-sender';
+import { MESSAGES } from '../../../constants/messages';
 
 export class CallbackHandler {
   private sessionReader: ClaudeSessionReader;
@@ -37,7 +38,30 @@ export class CallbackHandler {
 
     await ctx.answerCbQuery();
 
-    if (data?.startsWith('project_type_')) {
+    if (data?.startsWith('onboarding_')) {
+      await this.handleOnboardingCallback(ctx, data, chatId, messageId);
+    } else if (data === 'project_type_directory') {
+      // Use interactive directory picker instead of text input
+      const user = await this.storage.getUserSession(chatId);
+      if (user) {
+        user.setState(UserState.WaitingDirectory);
+        await this.storage.saveUserSession(user);
+        if (messageId) {
+          try { await this.bot.telegram.deleteMessage(chatId, messageId); } catch {}
+        }
+        await this.fileBrowserHandler.startDirectoryPicker(chatId);
+      }
+    } else if (data === 'project_type_github') {
+      const user = await this.storage.getUserSession(chatId);
+      if (user) {
+        user.setState(UserState.WaitingRepo);
+        await this.storage.saveUserSession(user);
+        if (messageId) {
+          try { await this.bot.telegram.deleteMessage(chatId, messageId); } catch {}
+        }
+        await this.bot.telegram.sendMessage(chatId, MESSAGES.GITHUB_PROJECT_TEXT);
+      }
+    } else if (data?.startsWith('project_type_')) {
       await this.projectHandler.handleProjectTypeSelection(data, chatId);
     } else if (data?.startsWith('project_select_')) {
       await this.handleProjectSelection(data, chatId, messageId);
@@ -51,6 +75,8 @@ export class CallbackHandler {
       await this.handleMCPApprovalCallback(data, chatId, messageId);
     } else if (data?.startsWith('asr_')) {
       await this.handleASRCallback(data, chatId, messageId);
+    } else if (data?.startsWith('pick_')) {
+      await this.handleDirectoryPickerCallback(data, chatId, messageId);
     } else if (data?.startsWith('file:') || data?.startsWith('directory:') || data?.startsWith('nav:')) {
       await this.fileBrowserHandler.handleFileBrowsingCallback(data, chatId, messageId);
     } else if (data?.startsWith('model_select:')) {
@@ -303,6 +329,107 @@ export class CallbackHandler {
     } catch (error) {
       console.error('Error handling model select callback:', error);
       await this.bot.telegram.sendMessage(chatId, this.formatter.formatError('Failed to change model. Please try again.'), { parse_mode: 'MarkdownV2' });
+    }
+  }
+
+  private async handleDirectoryPickerCallback(data: string, chatId: number, messageId?: number): Promise<void> {
+    const result = await this.fileBrowserHandler.handleDirectoryPickerCallback(data, chatId, messageId);
+
+    if (result === null) {
+      // Cancelled
+      const user = await this.storage.getUserSession(chatId);
+      if (user) {
+        // If was in onboarding, mark as completed and go to idle
+        if (!user.hasCompletedOnboarding()) {
+          user.setOnboardingCompleted(true);
+        }
+        user.setState(UserState.Idle);
+        await this.storage.saveUserSession(user);
+      }
+      await this.bot.telegram.sendMessage(chatId, '❌ Directory selection cancelled.');
+    } else if (result === 'search') {
+      // User wants to type a path - set state to WaitingPickerSearch
+      const user = await this.storage.getUserSession(chatId);
+      if (user) {
+        user.setState(UserState.WaitingPickerSearch);
+        await this.storage.saveUserSession(user);
+      }
+    } else if (typeof result === 'string') {
+      // Directory selected - mark onboarding if needed, then create project
+      const user = await this.storage.getUserSession(chatId);
+      if (user && !user.hasCompletedOnboarding()) {
+        user.setOnboardingCompleted(true);
+        await this.storage.saveUserSession(user);
+      }
+      await this.projectHandler.createProjectFromPath(chatId, result);
+    }
+    // undefined = still browsing, do nothing
+  }
+
+  private async handleOnboardingCallback(ctx: Context, data: string, chatId: number, messageId?: number): Promise<void> {
+    const user = await this.storage.getUserSession(chatId);
+    if (!user) return;
+
+    try {
+      // Delete previous message for clean UI
+      if (messageId) {
+        try { await this.bot.telegram.deleteMessage(chatId, messageId); } catch {}
+      }
+
+      switch (data) {
+        case 'onboarding_continue':
+          user.setState(UserState.OnboardingDisclaimer);
+          await this.storage.saveUserSession(user);
+          await ctx.reply(MESSAGES.ONBOARDING.DISCLAIMER, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingDisclaimerKeyboard() });
+          break;
+
+        case 'onboarding_accept':
+          user.setState(UserState.OnboardingModel);
+          await this.storage.saveUserSession(user);
+          await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel) });
+          break;
+
+        case 'onboarding_decline':
+          await ctx.reply(MESSAGES.ONBOARDING.DECLINE_WARNING, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingDisclaimerKeyboard() });
+          break;
+
+        case 'onboarding_model_done':
+          user.setState(UserState.OnboardingProject);
+          await this.storage.saveUserSession(user);
+          await ctx.reply(MESSAGES.ONBOARDING.PROJECT_GUIDE, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingProjectKeyboard() });
+          break;
+
+        case 'onboarding_project_github':
+          user.setOnboardingCompleted(true);
+          user.setState(UserState.WaitingRepo);
+          await this.storage.saveUserSession(user);
+          await ctx.reply(MESSAGES.GITHUB_PROJECT_TEXT);
+          break;
+
+        case 'onboarding_project_local':
+          user.setState(UserState.WaitingDirectory);
+          await this.storage.saveUserSession(user);
+          await this.fileBrowserHandler.startDirectoryPicker(chatId);
+          break;
+
+        case 'onboarding_skip':
+          user.setOnboardingCompleted(true);
+          user.setState(UserState.Idle);
+          await this.storage.saveUserSession(user);
+          await ctx.reply(MESSAGES.ONBOARDING.COMPLETED, { parse_mode: 'Markdown' });
+          break;
+
+        default:
+          if (data.startsWith('onboarding_model:')) {
+            const modelValue = data.replace('onboarding_model:', '') as ClaudeModel;
+            user.setModel(modelValue);
+            await this.storage.saveUserSession(user);
+            // Update keyboard with selection
+            await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(modelValue) });
+          }
+      }
+    } catch (error) {
+      console.error('Error handling onboarding callback:', error);
     }
   }
 }

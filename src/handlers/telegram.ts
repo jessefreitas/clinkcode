@@ -57,9 +57,9 @@ export class TelegramHandler {
     // Initialize handlers
     this.commandHandler = new CommandHandler(this.storage, this.formatter, this.claudeSDK, this.config, this.bot);
     this.projectHandler = new ProjectHandler(this.storage, this.github, this.directory, this.formatter, this.bot);
-    this.messageHandler = new MessageHandler(this.storage, this.github, this.formatter, this.claudeSDK, this.projectHandler, this.bot, this.config);
     this.toolHandler = new ToolHandler(this.storage, this.formatter, this.config, this.bot, this.claudeSDK);
     this.fileBrowserHandler = new FileBrowserHandler(this.storage, this.directory, this.formatter, this.config, this.bot);
+    this.messageHandler = new MessageHandler(this.storage, this.github, this.formatter, this.claudeSDK, this.projectHandler, this.bot, this.config, this.fileBrowserHandler);
     this.callbackHandler = new CallbackHandler(this.formatter, this.projectHandler, this.storage, this.fileBrowserHandler, this.bot, this.permissionManager, this.claudeSDK);
 
 
@@ -118,6 +118,12 @@ export class TelegramHandler {
 
     // Model selection command
     this.bot.command('model', (ctx) => this.commandHandler.handleModel(ctx));
+
+    // Diff command
+    this.bot.command('diff', (ctx) => this.commandHandler.handleDiff(ctx));
+
+    // Onboarding reset command
+    this.bot.command('resetonboarding', (ctx) => this.commandHandler.handleResetOnboarding(ctx));
 
     // Text message handler
     this.bot.on(message('text'), (ctx) => this.messageHandler.handleTextMessage(ctx));

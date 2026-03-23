@@ -1,4 +1,4 @@
-import { Context } from 'telegraf';
+import { Context, Markup, Input } from 'telegraf';
 import { UserSessionModel } from '../../../models/user-session';
 import { UserState, PermissionMode, ClaudeModel, AVAILABLE_MODELS } from '../../../models/types';
 import { IStorage } from '../../../storage/interface';
@@ -10,6 +10,8 @@ import { AuthService } from '../../../services/auth-service';
 import { Config } from '../../../config/config';
 import { TelegramSender } from '../../../services/telegram-sender';
 import { ClaudeSessionReader } from '../../../utils/claude-session-reader';
+import { execFile } from 'child_process';
+import * as path from 'path';
 
 export class CommandHandler {
   private authService: AuthService;
@@ -30,20 +32,79 @@ export class CommandHandler {
 
   async handleStart(ctx: Context): Promise<void> {
     if (!ctx.chat) return;
+    const chatId = ctx.chat.id;
 
-    await this.telegramSender.safeSendMessage(ctx.chat.id, MESSAGES.WELCOME_TEXT);
+    let user = await this.storage.getUserSession(chatId);
+
+    if (!user) {
+      // New user - create session and start onboarding
+      user = new UserSessionModel(chatId);
+      user.setState(UserState.OnboardingWelcome);
+      await this.storage.saveUserSession(user);
+
+      await ctx.reply(
+        MESSAGES.ONBOARDING.WELCOME,
+        { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingWelcomeKeyboard() }
+      );
+      return;
+    }
+
+    if (!user.hasCompletedOnboarding()) {
+      // Incomplete onboarding - resume from current state
+      await this.resumeOnboarding(ctx, user);
+      return;
+    }
+
+    // Existing user - short welcome message
+    await ctx.reply(MESSAGES.ONBOARDING.WELCOME_RETURNING, { parse_mode: 'Markdown' });
+  }
+
+  async handleResetOnboarding(ctx: Context): Promise<void> {
+    if (!ctx.chat) return;
+    const chatId = ctx.chat.id;
+
+    let user = await this.storage.getUserSession(chatId);
+    if (!user) {
+      user = new UserSessionModel(chatId);
+    }
+
+    user.setOnboardingCompleted(false);
+    user.setState(UserState.OnboardingWelcome);
+    await this.storage.saveUserSession(user);
+
+    await ctx.reply(
+      MESSAGES.ONBOARDING.WELCOME,
+      { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingWelcomeKeyboard() }
+    );
+  }
+
+  private async resumeOnboarding(ctx: Context, user: UserSessionModel): Promise<void> {
+    switch (user.state) {
+      case UserState.OnboardingWelcome:
+        await ctx.reply(MESSAGES.ONBOARDING.WELCOME, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingWelcomeKeyboard() });
+        break;
+      case UserState.OnboardingDisclaimer:
+        await ctx.reply(MESSAGES.ONBOARDING.DISCLAIMER, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingDisclaimerKeyboard() });
+        break;
+      case UserState.OnboardingModel:
+        await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel) });
+        break;
+      case UserState.OnboardingProject:
+        await ctx.reply(MESSAGES.ONBOARDING.PROJECT_GUIDE, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingProjectKeyboard() });
+        break;
+      default:
+        // Unknown state - restart onboarding
+        user.setState(UserState.OnboardingWelcome);
+        await this.storage.saveUserSession(user);
+        await ctx.reply(MESSAGES.ONBOARDING.WELCOME, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingWelcomeKeyboard() });
+    }
   }
 
   async handleCreateProject(ctx: Context): Promise<void> {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
-    const user = await this.storage.getUserSession(chatId);
-
-    if (!user) {
-      await ctx.reply(this.formatter.formatError(MESSAGES.ERRORS.USER_NOT_INITIALIZED), { parse_mode: 'MarkdownV2' });
-      return;
-    }
+    const user = await this.getOrCreateUser(chatId);
 
     if (user.state !== UserState.Idle) {
       await ctx.reply(this.formatter.formatError(MESSAGES.ERRORS.COMPLETE_CURRENT_OPERATION), { parse_mode: 'MarkdownV2' });
@@ -66,24 +127,20 @@ export class CommandHandler {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
-    const user = await this.storage.getUserSession(chatId);
-
-    if (!user) {
-      await ctx.reply(this.formatter.formatError('No user session found. Please auth first or /start.'), { parse_mode: 'MarkdownV2' });
-      return;
-    }
+    const user = await this.getOrCreateUser(chatId);
 
     try {
       // Read projects from Claude Code's ~/.claude/projects/ directory
       const claudeProjects = await this.sessionReader.listAllProjects(20);
 
       if (claudeProjects.length === 0) {
-        await ctx.reply('📋 No Claude Code projects found.\n\nUse Claude Code CLI first to create some sessions!');
+        const text = `📋 *Projects*\n\nNo existing projects found. Create one to get started:`;
+        await ctx.reply(text, { parse_mode: 'Markdown', ...KeyboardFactory.createClaudeProjectListKeyboard([]) });
         return;
       }
 
-      const listText = `📋 Claude Code Projects (${claudeProjects.length})\n\nSelect a project to work with:`;
-      await ctx.reply(listText, KeyboardFactory.createClaudeProjectListKeyboard(claudeProjects));
+      const listText = `📋 *Projects (${claudeProjects.length})*\n\nSelect a project or create a new one:`;
+      await ctx.reply(listText, { parse_mode: 'Markdown', ...KeyboardFactory.createClaudeProjectListKeyboard(claudeProjects) });
     } catch (error) {
       await ctx.reply(this.formatter.formatError('Failed to load projects. Please try again.'), { parse_mode: 'MarkdownV2' });
       console.error('Error loading projects:', error);
@@ -94,12 +151,7 @@ export class CommandHandler {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
-    const user = await this.storage.getUserSession(chatId);
-
-    if (!user) {
-      await ctx.reply(this.formatter.formatError('No user session found. Please auth first or /start.'), { parse_mode: 'MarkdownV2' });
-      return;
-    }
+    const user = await this.getOrCreateUser(chatId);
 
     if (user.state === UserState.Idle || !user.activeProject) {
       await ctx.reply(this.formatter.formatError('No active project to exit.'), { parse_mode: 'MarkdownV2' });
@@ -137,12 +189,7 @@ export class CommandHandler {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
-    const user = await this.storage.getUserSession(chatId);
-
-    if (!user) {
-      await ctx.reply(this.formatter.formatError(MESSAGES.ERRORS.USER_NOT_INITIALIZED), { parse_mode: 'MarkdownV2' });
-      return;
-    }
+    const user = await this.getOrCreateUser(chatId);
 
     const session = await this.storage.getUserSession(chatId);
     const sessionStatus = session?.active ? 'Active' : 'Inactive';
@@ -194,12 +241,7 @@ export class CommandHandler {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
-    const user = await this.storage.getUserSession(chatId);
-
-    if (!user) {
-      await ctx.reply(this.formatter.formatError('No active session found. Please start a session first.'), { parse_mode: 'MarkdownV2' });
-      return;
-    }
+    const user = await this.getOrCreateUser(chatId);
 
     try {
       delete user.sessionId;
@@ -217,12 +259,7 @@ export class CommandHandler {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
-    const user = await this.storage.getUserSession(chatId);
-
-    if (!user) {
-      await ctx.reply(this.formatter.formatError('No user session found. Please auth first or /start.'), { parse_mode: 'MarkdownV2' });
-      return;
-    }
+    const user = await this.getOrCreateUser(chatId);
 
     // Must have an active project to resume a session
     if (!user.activeProject || !user.projectPath) {
@@ -251,12 +288,7 @@ export class CommandHandler {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
-    const user = await this.storage.getUserSession(chatId);
-
-    if (!user) {
-      await ctx.reply(this.formatter.formatError('No active session found. Please start a session first.'), { parse_mode: 'MarkdownV2' });
-      return;
-    }
+    const user = await this.getOrCreateUser(chatId);
 
     try {
       const success = await this.claudeSDK.abortQuery(chatId);
@@ -311,12 +343,7 @@ export class CommandHandler {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
-    const user = await this.storage.getUserSession(chatId);
-
-    if (!user) {
-      await ctx.reply(this.formatter.formatError('No active session found. Please start a session first.'), { parse_mode: 'MarkdownV2' });
-      return;
-    }
+    const user = await this.getOrCreateUser(chatId);
 
     if (user.state !== UserState.InSession) {
       await ctx.reply(this.formatter.formatError('You must be in an active session to change permission mode.'), { parse_mode: 'MarkdownV2' });
@@ -365,12 +392,7 @@ export class CommandHandler {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
-    const user = await this.storage.getUserSession(chatId);
-
-    if (!user) {
-      await ctx.reply(this.formatter.formatError('No user session found. Please /start first.'), { parse_mode: 'MarkdownV2' });
-      return;
-    }
+    const user = await this.getOrCreateUser(chatId);
 
     // Check if a model argument was provided
     const messageText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
@@ -404,12 +426,7 @@ export class CommandHandler {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
-    const user = await this.storage.getUserSession(chatId);
-
-    if (!user) {
-      await ctx.reply(this.formatter.formatError('No user session found.'), { parse_mode: 'MarkdownV2' });
-      return;
-    }
+    const user = await this.getOrCreateUser(chatId);
 
     try {
       // Check if Claude is currently running and abort if needed
@@ -439,7 +456,139 @@ export class CommandHandler {
     }
   }
 
-  private async getOrCreateUser(chatId: number): Promise<UserSessionModel> {
+  async handleDiff(ctx: Context): Promise<void> {
+    if (!ctx.chat) return;
+
+    const chatId = ctx.chat.id;
+    const user = await this.getOrCreateUser(chatId);
+
+    if (!user.activeProject || !user.projectPath) {
+      await ctx.reply(this.formatter.formatError('No active project. Select a project first with /listproject.'), { parse_mode: 'MarkdownV2' });
+      return;
+    }
+
+    try {
+      const diff = await this.runGitDiff(user.projectPath);
+      if (!diff) {
+        await ctx.reply('No changes detected in the working directory.');
+        return;
+      }
+
+      // If Workers is enabled, use WebApp viewer
+      if (this.config.workers.enabled && this.config.workers.endpoint) {
+        try {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (this.config.workers.apiKey) {
+            headers['Authorization'] = `Bearer ${this.config.workers.apiKey}`;
+          }
+
+          const response = await fetch(`${this.config.workers.endpoint}/api/diff`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ content: diff, chatid: chatId.toString() })
+          });
+
+          if (response.ok) {
+            const result = await response.json() as { id: string };
+            const miniAppUrl = `${this.config.workers.endpoint}/diff?id=${result.id}`;
+            const keyboard = Markup.inlineKeyboard([
+              Markup.button.webApp('📊 View Diff', miniAppUrl)
+            ]);
+            await ctx.reply('📊 Git diff for current project:', keyboard);
+            return;
+          }
+        } catch {
+          // Workers failed, fall through to HTML file
+        }
+      }
+
+      // Generate self-contained HTML file with diff
+      const projectName = path.basename(user.projectPath);
+      const html = this.generateDiffHtml(diff, projectName);
+      const buffer = Buffer.from(html, 'utf-8');
+
+      await ctx.replyWithDocument(
+        Input.fromBuffer(buffer, `diff-${projectName}.html`),
+        { caption: `📊 Git diff for *${projectName}* — open in browser to view`, parse_mode: 'Markdown' }
+      );
+    } catch (error) {
+      await ctx.reply(this.formatter.formatError('Failed to generate diff. Is this a git repository?'), { parse_mode: 'MarkdownV2' });
+      console.error('Error generating diff:', error);
+    }
+  }
+
+  private generateDiffHtml(diff: string, projectName: string): string {
+    // Encode diff as base64 to avoid any escaping issues
+    const diffBase64 = Buffer.from(diff, 'utf-8').toString('base64');
+    const safeProjectName = projectName.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Diff — ${safeProjectName}</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css"
+    media="(prefers-color-scheme: light)"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css"
+    media="(prefers-color-scheme: dark)"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/css/diff2html.min.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html-ui.min.js"></script>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .header { padding: 12px 16px; background: #1a1a2e; color: #eee; font-size: 14px; }
+    .header strong { color: #64ffda; }
+    @media (prefers-color-scheme: light) {
+      .header { background: #f0f0f0; color: #333; }
+      .header strong { color: #0066cc; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">📊 Diff — <strong>${safeProjectName}</strong></div>
+  <div id="app"></div>
+  <script id="diff-data" type="application/base64">${diffBase64}</script>
+  <script>
+    var encoded = document.getElementById('diff-data').textContent;
+    var patch = atob(encoded);
+    var ui = new Diff2HtmlUI(document.getElementById('app'), patch, {
+      outputFormat: 'line-by-line',
+      drawFileList: true,
+      highlight: true,
+      matching: 'lines',
+      colorScheme: 'auto',
+    });
+    ui.draw();
+    ui.highlightCode();
+  </script>
+</body>
+</html>`;
+  }
+
+  private runGitDiff(projectPath: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      // Try git diff HEAD first (staged + unstaged vs last commit)
+      execFile('git', ['diff', 'HEAD'], { cwd: projectPath, maxBuffer: 1024 * 512, timeout: 10000 }, (error, stdout) => {
+        if (!error && stdout.trim()) {
+          resolve(stdout);
+          return;
+        }
+        // Fallback: git diff (unstaged only, works even with no commits)
+        execFile('git', ['diff'], { cwd: projectPath, maxBuffer: 1024 * 512, timeout: 10000 }, (error2, stdout2) => {
+          if (!error2 && stdout2.trim()) {
+            resolve(stdout2);
+            return;
+          }
+          // Fallback: git diff --cached (staged only)
+          execFile('git', ['diff', '--cached'], { cwd: projectPath, maxBuffer: 1024 * 512, timeout: 10000 }, (error3, stdout3) => {
+            resolve(stdout3?.trim() ? stdout3 : null);
+          });
+        });
+      });
+    });
+  }
+
+  async getOrCreateUser(chatId: number): Promise<UserSessionModel> {
     let user = await this.storage.getUserSession(chatId);
     if (!user) {
       user = new UserSessionModel(chatId);
