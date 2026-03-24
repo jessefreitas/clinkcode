@@ -8,7 +8,10 @@ import {
 } from "@openai/codex-sdk";
 import { IStorage } from "../storage/interface";
 import {
+  DEFAULT_CODEX_MODELS,
+  ModelInfo,
   PermissionMode,
+  setCodexModels,
   resolveModelForProvider,
   TargetTool,
 } from "../models/types";
@@ -26,6 +29,7 @@ interface QueuedInput {
 }
 
 export class CodexManager implements IAgentManager {
+  readonly provider = "codex" as const;
   private storage: IStorage;
   private streamManager = new StreamManager<QueuedInput>();
   private onAgentResponse: (
@@ -37,6 +41,9 @@ export class CodexManager implements IAgentManager {
   private onAgentError: (userId: string, error: string) => void;
   private codex: Codex;
   private threads = new Map<number, Thread>();
+  private dynamicModelCache: ModelInfo[] | null = null;
+  private dynamicModelCacheAt = 0;
+  private dynamicModelFetchInFlight: Promise<void> | null = null;
 
   constructor(
     storage: IStorage,
@@ -47,6 +54,7 @@ export class CodexManager implements IAgentManager {
     this.onAgentResponse = callbacks.onAgentResponse;
     this.onAgentError = callbacks.onAgentError;
     this.codex = new Codex(options);
+    this.primeModelCache();
   }
 
   async addMessageToStream(chatId: number, prompt: string): Promise<void> {
@@ -82,6 +90,26 @@ export class CodexManager implements IAgentManager {
 
   isQueryRunning(chatId: number): boolean {
     return this.streamManager.isStreamActive(chatId);
+  }
+
+  async getAvailableModels(): Promise<ModelInfo[]> {
+    const now = Date.now();
+    if (
+      this.dynamicModelCache &&
+      now - this.dynamicModelCacheAt < 5 * 60 * 1000
+    ) {
+      return this.dynamicModelCache;
+    }
+
+    if (this.dynamicModelCache) {
+      // Return stale cache immediately and refresh in background.
+      this.primeModelCache();
+      return this.dynamicModelCache;
+    }
+
+    // No cache yet: return defaults immediately and warm in background.
+    this.primeModelCache();
+    return DEFAULT_CODEX_MODELS;
   }
 
   async shutdown(): Promise<void> {
@@ -141,12 +169,7 @@ export class CodexManager implements IAgentManager {
       }
       throw error;
     } finally {
-      await this.onAgentResponse(
-        chatId.toString(),
-        null,
-        undefined,
-        undefined,
-      );
+      await this.onAgentResponse(chatId.toString(), null, undefined, undefined);
       this.streamManager.abortStream(chatId);
       this.threads.delete(chatId);
     }
@@ -421,5 +444,99 @@ export class CodexManager implements IAgentManager {
       return {};
     }
     return input as Record<string, unknown>;
+  }
+
+  private primeModelCache(): void {
+    if (this.dynamicModelFetchInFlight) {
+      return;
+    }
+
+    // Warm up dynamic model list in background so `/model` feels instant later.
+    this.dynamicModelFetchInFlight = this.fetchCodexModelsFromAgent()
+      .then((models) => {
+        if (models.length > 0) {
+          this.dynamicModelCache = models;
+          this.dynamicModelCacheAt = Date.now();
+          setCodexModels(models);
+        }
+      })
+      .catch((error) => {
+        console.warn(
+          "[CodexManager] Failed to prime model cache:",
+          error instanceof Error ? error.message : String(error),
+        );
+      })
+      .finally(() => {
+        this.dynamicModelFetchInFlight = null;
+      });
+  }
+
+  private async fetchCodexModelsFromAgent(): Promise<ModelInfo[]> {
+    const modelPrompt = [
+      "Return ONLY valid JSON (no markdown) as an array of objects compatible with this TypeScript type:",
+      '{ value: string; provider: "codex"; displayName: string; description: string }[]',
+      "List currently available Codex-compatible models for this environment/account.",
+      "Do not include unavailable models.",
+      "Example item:",
+      '{"value":"gpt-5-codex","provider":"codex","displayName":"GPT-5 Codex","description":"Coding optimized"}',
+    ].join("\n");
+
+    const thread = this.codex.startThread({
+      sandboxMode: "read-only",
+      approvalPolicy: "never",
+      model: "gpt-5-codex-mini",
+      skipGitRepoCheck: true,
+      webSearchEnabled: false,
+      networkAccessEnabled: true,
+    });
+
+    const turn = await thread.run(modelPrompt);
+    return this.parseModelInfoArray(turn.finalResponse);
+  }
+
+  private parseModelInfoArray(text: string): ModelInfo[] {
+    const trimmed = text.trim();
+    const start = trimmed.indexOf("[");
+    const end = trimmed.lastIndexOf("]");
+    if (start === -1 || end === -1 || end <= start) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed.slice(start, end + 1));
+      if (!Array.isArray(parsed)) return [];
+      const models: ModelInfo[] = [];
+
+      for (const item of parsed) {
+        if (!item || typeof item !== "object") continue;
+        const value =
+          typeof (item as any).value === "string"
+            ? (item as any).value.trim()
+            : "";
+        if (!value) continue;
+
+        const displayName =
+          typeof (item as any).displayName === "string" &&
+          (item as any).displayName.trim()
+            ? (item as any).displayName.trim()
+            : value;
+        const description =
+          typeof (item as any).description === "string" &&
+          (item as any).description.trim()
+            ? (item as any).description.trim()
+            : "Available";
+
+        models.push({
+          value,
+          provider: "codex",
+          displayName,
+          description,
+        });
+      }
+
+      return models;
+    } catch {
+      return [];
+    }
   }
 }

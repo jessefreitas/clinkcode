@@ -3,7 +3,7 @@ import { IStorage } from '../../../storage/interface';
 import { MessageFormatter } from '../../../utils/formatter';
 import { ProjectHandler } from '../project/project-handler';
 import { FileBrowserHandler } from '../file-browser/file-browser-handler';
-import { UserState, AgentModel, getModelsForProvider, resolveModelForProvider } from '../../../models/types';
+import { UserState, AgentModel, resolveModelForProvider } from '../../../models/types';
 import { PermissionManager } from '../../permission-manager';
 import { AgentSessionReader } from '../../../utils/agent-session-reader';
 import { KeyboardFactory } from '../keyboards/keyboard-factory';
@@ -293,7 +293,7 @@ export class CallbackHandler {
   private async handleModelSelectCallback(data: string, chatId: number, messageId?: number): Promise<void> {
     try {
       const selectedModel = data.replace('model_select:', '') as AgentModel;
-      const availableModels = getModelsForProvider(this.config.agent.provider);
+      const availableModels = await this.agentManager.getAvailableModels();
 
       // Validate model
       const modelInfo = availableModels.find(m => m.value === selectedModel);
@@ -309,7 +309,7 @@ export class CallbackHandler {
       }
 
       // Check if same model is selected
-      const provider = this.config.agent.provider;
+      const provider = this.agentManager.provider;
       const resolvedCurrent = resolveModelForProvider(provider, user.currentModel);
 
       if (resolvedCurrent === selectedModel) {
@@ -403,7 +403,7 @@ export class CallbackHandler {
         case 'onboarding_accept':
           user.setState(UserState.OnboardingModel);
           await this.storage.saveUserSession(user);
-          await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel, this.config.agent.provider) });
+          await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel, this.agentManager.provider) });
           break;
 
         case 'onboarding_decline':
@@ -439,7 +439,8 @@ export class CallbackHandler {
         default:
           if (data.startsWith('onboarding_model:')) {
             const modelValue = data.replace('onboarding_model:', '') as AgentModel;
-            const validOnboardingModel = getModelsForProvider(this.config.agent.provider).some((m) => m.value === modelValue);
+            const onboardingModels = await this.agentManager.getAvailableModels();
+            const validOnboardingModel = onboardingModels.some((m) => m.value === modelValue);
             if (!validOnboardingModel) {
               await this.bot.telegram.sendMessage(chatId, this.formatter.formatError('Invalid model selected.'), { parse_mode: 'MarkdownV2' });
               return;
@@ -447,7 +448,7 @@ export class CallbackHandler {
             user.setModel(modelValue);
             await this.storage.saveUserSession(user);
             // Update keyboard with selection
-            await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(modelValue, this.config.agent.provider) });
+            await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(modelValue, this.agentManager.provider) });
           }
       }
     } catch (error) {

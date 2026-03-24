@@ -103,10 +103,7 @@ export type ClaudeModel =
   | 'claude-opus-4-5-20251101'
   | 'claude-haiku-4-5-20251001';
 
-export type CodexModel =
-  | 'gpt-5-codex'
-  | 'gpt-5'
-  | 'gpt-5-mini';
+export type CodexModel = string;
 
 export type AgentModel = ClaudeModel | CodexModel;
 
@@ -117,14 +114,21 @@ export interface ModelInfo {
   description: string;
 }
 
-export const AVAILABLE_MODELS: ModelInfo[] = [
+const CLAUDE_MODELS: ModelInfo[] = [
   { value: 'claude-sonnet-4-5-20250929', provider: 'claude', displayName: 'Sonnet 4.5', description: 'Balanced' },
   { value: 'claude-opus-4-5-20251101', provider: 'claude', displayName: 'Opus 4.5', description: 'Most capable' },
   { value: 'claude-haiku-4-5-20251001', provider: 'claude', displayName: 'Haiku 4.5', description: 'Fastest' },
+];
+
+export const DEFAULT_CODEX_MODELS: ModelInfo[] = [
   { value: 'gpt-5-codex', provider: 'codex', displayName: 'GPT-5 Codex', description: 'Coding optimized' },
   { value: 'gpt-5', provider: 'codex', displayName: 'GPT-5', description: 'Most capable' },
   { value: 'gpt-5-mini', provider: 'codex', displayName: 'GPT-5 Mini', description: 'Faster' },
 ];
+
+let runtimeCodexModels: ModelInfo[] = [...DEFAULT_CODEX_MODELS];
+
+export const AVAILABLE_MODELS: ModelInfo[] = [...CLAUDE_MODELS, ...DEFAULT_CODEX_MODELS];
 
 export const DEFAULT_PROVIDER: AgentProvider = 'claude';
 
@@ -135,8 +139,20 @@ export const DEFAULT_MODELS: Record<AgentProvider, AgentModel> = {
 
 export const DEFAULT_MODEL: AgentModel = DEFAULT_MODELS[DEFAULT_PROVIDER];
 
+export function setCodexModels(models: ModelInfo[]): void {
+  const unique = new Map<string, ModelInfo>();
+  for (const model of models) {
+    if (model.provider !== 'codex') continue;
+    if (!model.value || !model.displayName) continue;
+    unique.set(model.value, model);
+  }
+  if (unique.size > 0) {
+    runtimeCodexModels = Array.from(unique.values());
+  }
+}
+
 export function getModelsForProvider(provider: AgentProvider): ModelInfo[] {
-  return AVAILABLE_MODELS.filter((model) => model.provider === provider);
+  return provider === 'codex' ? runtimeCodexModels : CLAUDE_MODELS;
 }
 
 export function resolveModelForProvider(provider: AgentProvider, currentModel: AgentModel): AgentModel {

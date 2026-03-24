@@ -1,6 +1,6 @@
 import { Context, Markup, Input } from 'telegraf';
 import { UserSessionModel } from '../../../models/user-session';
-import { UserState, PermissionMode, AgentModel, getModelsForProvider, resolveModelForProvider } from '../../../models/types';
+import { UserState, PermissionMode, AgentModel, resolveModelForProvider } from '../../../models/types';
 import { IStorage } from '../../../storage/interface';
 import { MessageFormatter } from '../../../utils/formatter';
 import { MESSAGES } from '../../../constants/messages';
@@ -89,7 +89,7 @@ export class CommandHandler {
         await ctx.reply(MESSAGES.ONBOARDING.DISCLAIMER, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingDisclaimerKeyboard() });
         break;
       case UserState.OnboardingModel:
-        await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel, this.config.agent.provider) });
+        await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel, this.agentManager.provider) });
         break;
       case UserState.OnboardingProject:
         await ctx.reply(MESSAGES.ONBOARDING.PROJECT_GUIDE, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingProjectKeyboard() });
@@ -402,7 +402,7 @@ export class CommandHandler {
 
     if (modelArg) {
       // Try to find matching model
-      const models = getModelsForProvider(this.config.agent.provider);
+      const models = await this.agentManager.getAvailableModels();
       const matchedModel = models.find(
         m => m.displayName.toLowerCase().includes(modelArg) ||
              m.value.toLowerCase().includes(modelArg)
@@ -418,8 +418,8 @@ export class CommandHandler {
     }
 
     // Show current model and selection keyboard
-    const models = getModelsForProvider(this.config.agent.provider);
-    const resolvedModel = resolveModelForProvider(this.config.agent.provider, user.currentModel);
+    const models = await this.agentManager.getAvailableModels();
+    const resolvedModel = resolveModelForProvider(this.agentManager.provider, user.currentModel);
     if (resolvedModel !== user.currentModel) {
       user.setModel(resolvedModel);
       await this.storage.saveUserSession(user);
@@ -428,7 +428,7 @@ export class CommandHandler {
     const currentModelName = currentModel?.displayName || user.currentModel;
 
     const text = `🤖 Current model: **${currentModelName}**\n\nSelect a model:`;
-    await this.telegramSender.safeSendMessage(chatId, text, KeyboardFactory.createModelSelectionKeyboard(resolvedModel, this.config.agent.provider));
+    await this.telegramSender.safeSendMessage(chatId, text, KeyboardFactory.createModelSelectionKeyboard(resolvedModel, this.agentManager.provider));
   }
 
   async handleModelChange(ctx: Context, model: AgentModel): Promise<void> {
@@ -436,7 +436,7 @@ export class CommandHandler {
 
     const chatId = ctx.chat.id;
     const user = await this.getOrCreateUser(chatId);
-    const availableModels = getModelsForProvider(this.config.agent.provider);
+    const availableModels = await this.agentManager.getAvailableModels();
     const isValidModel = availableModels.some((m) => m.value === model);
     if (!isValidModel) {
       await ctx.reply(this.formatter.formatError('Invalid model for current provider.'), { parse_mode: 'MarkdownV2' });

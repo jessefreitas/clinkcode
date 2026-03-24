@@ -1,12 +1,13 @@
 import { query, type Options, AbortError, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { IStorage } from '../storage/interface';
-import { resolveModelForProvider, TargetTool } from '../models/types';
+import { getModelsForProvider, ModelInfo, resolveModelForProvider, TargetTool } from '../models/types';
 import { PermissionManager } from './permission-manager';
 import { StreamManager } from '../utils/stream-manager';
 import { AgentMessage, AgentUserMessage } from '../models/agent-message';
 import { AgentCallbacks, AgentToolInfo, IAgentManager } from './agent-manager';
 
 export class ClaudeManager implements IAgentManager {
+  readonly provider = 'claude' as const;
   private storage: IStorage;
   private permissionManager: PermissionManager;
   private streamManager = new StreamManager<AgentUserMessage>();
@@ -140,6 +141,10 @@ export class ClaudeManager implements IAgentManager {
 
   isQueryRunning(chatId: number): boolean {
     return this.streamManager.isStreamActive(chatId);
+  }
+
+  async getAvailableModels(): Promise<ModelInfo[]> {
+    return getModelsForProvider(this.provider);
   }
 
   async shutdown(): Promise<void> {

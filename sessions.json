@@ -2,13 +2,13 @@
   "6685765370": {
     "chatId": 6685765370,
     "state": "in_session",
-    "lastActivity": "2026-03-24T14:40:23.561Z",
+    "lastActivity": "2026-03-24T16:17:17.610Z",
     "activeProject": "-Users-fernandofernandes",
     "sessionId": "019d204a-1814-7033-8a22-4cca27c0b844",
     "projectPath": "/Users/fernandofernandes",
     "active": true,
     "permissionMode": "default",
     "authenticated": false,
-    "currentModel": "gpt-5-codex"
+    "currentModel": "gpt-5.1-codex-mini"
   }
 }

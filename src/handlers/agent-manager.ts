@@ -1,4 +1,5 @@
 import { AgentMessage } from '../models/agent-message';
+import { AgentProvider, ModelInfo } from '../models/types';
 
 export interface AgentToolInfo {
   toolId: string;
@@ -13,9 +14,11 @@ export interface AgentCallbacks {
 }
 
 export interface IAgentManager {
+  readonly provider: AgentProvider;
   addMessageToStream(chatId: number, prompt: string): Promise<void>;
   addImageMessageToStream(chatId: number, base64Data: string, mediaType: string, caption?: string): Promise<void>;
   abortQuery(chatId: number): Promise<boolean>;
   isQueryRunning(chatId: number): boolean;
+  getAvailableModels(): Promise<ModelInfo[]>;
   shutdown(): Promise<void>;
 }
