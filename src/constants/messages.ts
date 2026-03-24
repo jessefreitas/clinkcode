@@ -141,42 +141,37 @@ Project path: ${activeProjectPath}
 Permission mode: ${permissionMode}`,
 
   // Help text
-  HELP_TEXT: `📚 Help Documentation
+  HELP_TEXT: `📚 *Clink Code — Help*
 
-📋 **Project Management**
-/createproject - Create new project (GitHub repo or local directory)
-/listproject - View all your projects
-/exitproject - Exit current project
+📋 *Projects*
+/listproject — Browse and create projects
+/createproject — Create a new project
+/exitproject — Exit current project
 
-💬 **Session Control**
-/auth [secret] - Authenticate with secret (if required)
-/abort - Abort current Claude query
-/clear - Clear Claude session
-/resume - Resume a previous Claude Code session
+💬 *Session*
+/resume — Resume a previous session
+/clear — Clear current session
+/abort — Abort current query
+/diff — View git diff of current project
 
-🔧 **Permission Modes**
-/default - Standard behavior with permission prompts
-/acceptedits - Auto-accept file edit permissions
-/plan - Analysis only, no file modifications
-/bypass - Skip all permission prompts (secure environments)
+🔧 *Permission Modes*
+/default — Standard with permission prompts
+/acceptedits — Auto-accept file edits
+/plan — Analysis only, no modifications
+/bypass — Skip all permission prompts
 
-📁 **File Operations**
-/ls [path] - Browse project files and directories
+📁 *Tools*
+/ls — Browse project files
+/model — Change Claude model
+/status — View current status
 
-ℹ️ **Information**
-/status - View comprehensive status information
-/help - Show this help message
+🔐 *Security*
+/auth — Authenticate with secret token
 
-**Usage Flow:**
-1. Authenticate with /auth if secret is required
-2. Create project with /createproject
-3. Chat directly with Claude Code
-4. Use permission modes to control Claude's capabilities
-5. Browse files with /ls when needed
-
-**Tips:**
-• After creating a project, just send messages to interact with Claude
-• Use /status to check your current setup`,
+*Getting Started:*
+1. Select a project with /listproject
+2. Send messages to chat with Claude Code
+3. Use /diff to review changes`,
 
   // Progress messages
   CLONING_REPO: '⏳ Cloning repository...',

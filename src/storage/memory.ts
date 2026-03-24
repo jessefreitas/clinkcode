@@ -5,7 +5,7 @@ import { UserSessionModel } from '../models/user-session';
 import { Project } from '../models/project';
 import { IStorage } from './interface';
 
-const STORE_DIR = path.join(os.homedir(), '.config', 'clinkcode');
+const STORE_DIR = path.join(os.homedir(), '.clinkcode');
 const SESSIONS_FILE = path.join(STORE_DIR, 'sessions.json');
 const PROJECTS_FILE = path.join(STORE_DIR, 'projects.json');
 

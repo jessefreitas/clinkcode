@@ -154,6 +154,17 @@ export class CallbackHandler {
         return;
       }
 
+      // Save project to storage so /status and other commands can find it
+      const { createProject } = await import('../../../models/project');
+      const storedProject = createProject(
+        project.id,
+        chatId,
+        project.name,
+        project.path,
+        'local'
+      );
+      await this.storage.saveProject(storedProject);
+
       // Set active project using the project path
       user.setActiveProject(project.id, project.path);
       user.setState(UserState.InSession);

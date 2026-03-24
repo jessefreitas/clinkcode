@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-const STORE_DIR = path.join(os.homedir(), '.config', 'clinkcode');
+const STORE_DIR = path.join(os.homedir(), '.clinkcode');
 const STORE_FILE = path.join(STORE_DIR, 'onboarding.json');
 
 interface OnboardingData {
