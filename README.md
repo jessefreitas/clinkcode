@@ -1,5 +1,9 @@
 # Clink Code
 
+<p align="center">
+  <img src="assets/banner.jpeg" alt="Clink Code" />
+</p>
+
 A powerful Telegram bot that integrates with Claude Code via the Claude Agent SDK to provide AI-powered coding assistance directly through Telegram. **Uses telegram polling mode - runs on any computer with internet connection, no public IP or domain required.**
 
 This bot allows users to interact with Claude's coding capabilities in a conversational interface with features like project management, file browsing, and comprehensive permission controls.
