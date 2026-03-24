@@ -3,7 +3,7 @@ import { IStorage } from '../../../storage/interface';
 import { MessageFormatter } from '../../../utils/formatter';
 import { ProjectHandler } from '../project/project-handler';
 import { FileBrowserHandler } from '../file-browser/file-browser-handler';
-import { UserState, AgentModel, resolveModelForProvider } from '../../../models/types';
+import { UserState, AgentModel, AgentProvider, ModelInfo, getAllProviderModels } from '../../../models/types';
 import { PermissionManager } from '../../permission-manager';
 import { AgentSessionReader } from '../../../utils/agent-session-reader';
 import { KeyboardFactory } from '../keyboards/keyboard-factory';
@@ -292,11 +292,17 @@ export class CallbackHandler {
 
   private async handleModelSelectCallback(data: string, chatId: number, messageId?: number): Promise<void> {
     try {
-      const selectedModel = data.replace('model_select:', '') as AgentModel;
-      const availableModels = await this.agentManager.getAvailableModels();
+      const selectedPayload = data.replace('model_select:', '');
+      const [selectedProviderRaw, selectedModelRaw] = selectedPayload.includes(':')
+        ? selectedPayload.split(':', 2)
+        : [undefined, selectedPayload];
+      const selectedProvider = selectedProviderRaw as AgentProvider | undefined;
+      const selectedModel = decodeURIComponent(selectedModelRaw) as AgentModel;
+      const availableModels = await this.getSelectableModels();
 
-      // Validate model
-      const modelInfo = availableModels.find(m => m.value === selectedModel);
+      const modelInfo = selectedProvider
+        ? availableModels.find((m) => m.provider === selectedProvider && m.value === selectedModel)
+        : availableModels.find((m) => m.value === selectedModel);
       if (!modelInfo) {
         await this.bot.telegram.sendMessage(chatId, this.formatter.formatError('Invalid model selected.'), { parse_mode: 'MarkdownV2' });
         return;
@@ -308,15 +314,12 @@ export class CallbackHandler {
         return;
       }
 
-      // Check if same model is selected
-      const provider = this.agentManager.provider;
-      const resolvedCurrent = resolveModelForProvider(provider, user.currentModel);
-
-      if (resolvedCurrent === selectedModel) {
+      const currentProvider = this.agentManager.provider;
+      if (currentProvider === modelInfo.provider && user.currentModel === modelInfo.value) {
         if (messageId) {
           try { await this.bot.telegram.deleteMessage(chatId, messageId); } catch {}
         }
-        await this.bot.telegram.sendMessage(chatId, `ℹ️ Already using **${modelInfo.displayName}**`, { parse_mode: 'Markdown' });
+        await this.bot.telegram.sendMessage(chatId, `ℹ️ Already using **${modelInfo.provider} - ${modelInfo.displayName}**`, { parse_mode: 'Markdown' });
         return;
       }
 
@@ -329,8 +332,19 @@ export class CallbackHandler {
         }
       }
 
-      // Update model without clearing session
-      user.setModel(selectedModel);
+      const providerChanged = currentProvider !== modelInfo.provider;
+      if (providerChanged) {
+        if (!this.agentManager.setProvider) {
+          await this.bot.telegram.sendMessage(chatId, this.formatter.formatError('Provider switching is not supported in this runtime.'), { parse_mode: 'MarkdownV2' });
+          return;
+        }
+        await this.agentManager.setProvider(modelInfo.provider);
+        this.config.agent.provider = modelInfo.provider;
+        // Provider sessions are not cross-compatible.
+        delete user.sessionId;
+      }
+
+      user.setModel(modelInfo.value);
       await this.storage.saveUserSession(user);
 
       // Delete the selection message
@@ -338,9 +352,12 @@ export class CallbackHandler {
         try { await this.bot.telegram.deleteMessage(chatId, messageId); } catch {}
       }
 
+      const details = providerChanged
+        ? `✅ Model switched to **${modelInfo.provider} - ${modelInfo.displayName}**\n🧹 Session reset because provider changed.`
+        : `✅ Model switched to **${modelInfo.provider} - ${modelInfo.displayName}**`;
       const finalMessage = abortMessage
-        ? `${abortMessage}✅ Model switched to **${modelInfo.displayName}**\n🔄 Continue your conversation with the new model.`
-        : `✅ Model switched to **${modelInfo.displayName}**`;
+        ? `${abortMessage}${details}\n🔄 Continue your conversation with the new model.`
+        : details;
 
       await this.telegramSender.safeSendMessage(chatId, finalMessage);
     } catch (error) {
@@ -454,5 +471,15 @@ export class CallbackHandler {
     } catch (error) {
       console.error('Error handling onboarding callback:', error);
     }
+  }
+
+  private async getSelectableModels(): Promise<ModelInfo[]> {
+    await this.agentManager.getAvailableModels();
+    const models = getAllProviderModels();
+    const unique = new Map<string, ModelInfo>();
+    for (const model of models) {
+      unique.set(`${model.provider}:${model.value}`, model);
+    }
+    return Array.from(unique.values());
   }
 }

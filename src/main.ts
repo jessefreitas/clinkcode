@@ -7,6 +7,7 @@ import { GitHubManager } from './handlers/github';
 import { DirectoryManager } from './handlers/directory';
 import { ClaudeManager } from './handlers/claude';
 import { CodexManager } from './handlers/codex';
+import { ProviderRouterManager } from './handlers/provider-router';
 import { TelegramHandler } from './handlers/telegram';
 import { ExpressServer } from './server/express';
 import { MessageFormatter } from './utils/formatter';
@@ -53,21 +54,23 @@ async function main(): Promise<void> {
       }
     };
 
-    let agentManager: IAgentManager;
-    if (config.agent.provider === 'codex') {
-      const codexOptions = {
-        ...(config.codex.binaryPath ? { codexPathOverride: config.codex.binaryPath } : {}),
-        ...(config.codex.apiKey ? { apiKey: config.codex.apiKey } : {}),
-        ...(config.codex.baseUrl ? { baseUrl: config.codex.baseUrl } : {}),
-      };
-      agentManager = new CodexManager(storage, callbacks, {
-        ...codexOptions,
-      });
-      console.log('Codex agent manager initialized');
-    } else {
-      agentManager = new ClaudeManager(storage, permissionManager, callbacks, config.agentCli.binaryPath);
-      console.log('Claude manager initialized');
-    }
+    const codexOptions = {
+      ...(config.codex.binaryPath ? { codexPathOverride: config.codex.binaryPath } : {}),
+      ...(config.codex.apiKey ? { apiKey: config.codex.apiKey } : {}),
+      ...(config.codex.baseUrl ? { baseUrl: config.codex.baseUrl } : {}),
+    };
+
+    const claudeManager = new ClaudeManager(storage, permissionManager, callbacks, config.agentCli.binaryPath);
+    const codexManager = new CodexManager(storage, callbacks, {
+      ...codexOptions,
+    });
+
+    const agentManager: IAgentManager = new ProviderRouterManager(config.agent.provider, {
+      claude: claudeManager,
+      codex: codexManager,
+    });
+
+    console.log(`Agent manager initialized with provider: ${agentManager.provider}`);
 
     // Create Telegram handler with callback architecture
     telegramHandler = new TelegramHandler(

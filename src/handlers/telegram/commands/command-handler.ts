@@ -1,6 +1,6 @@
 import { Context, Markup, Input } from 'telegraf';
 import { UserSessionModel } from '../../../models/user-session';
-import { UserState, PermissionMode, AgentModel, resolveModelForProvider } from '../../../models/types';
+import { UserState, PermissionMode, AgentModel, ModelInfo, getAllProviderModels, resolveModelForProvider } from '../../../models/types';
 import { IStorage } from '../../../storage/interface';
 import { MessageFormatter } from '../../../utils/formatter';
 import { MESSAGES } from '../../../constants/messages';
@@ -402,14 +402,16 @@ export class CommandHandler {
 
     if (modelArg) {
       // Try to find matching model
-      const models = await this.agentManager.getAvailableModels();
+      const models = await this.getSelectableModels();
       const matchedModel = models.find(
-        m => m.displayName.toLowerCase().includes(modelArg) ||
-             m.value.toLowerCase().includes(modelArg)
+        (m) =>
+          `${m.provider} - ${m.displayName}`.toLowerCase().includes(modelArg) ||
+          m.displayName.toLowerCase().includes(modelArg) ||
+          m.value.toLowerCase().includes(modelArg)
       );
 
       if (matchedModel) {
-        await this.handleModelChange(ctx, matchedModel.value);
+        await this.handleModelChange(ctx, matchedModel.value, matchedModel.provider);
         return;
       } else {
         await ctx.reply(this.formatter.formatError(`Unknown model: "${modelArg}". Use /model to see available options.`), { parse_mode: 'MarkdownV2' });
@@ -418,28 +420,36 @@ export class CommandHandler {
     }
 
     // Show current model and selection keyboard
-    const models = await this.agentManager.getAvailableModels();
-    const resolvedModel = resolveModelForProvider(this.agentManager.provider, user.currentModel);
+    const models = await this.getSelectableModels();
+    const currentProvider = this.agentManager.provider;
+    const resolvedModel = resolveModelForProvider(currentProvider, user.currentModel);
     if (resolvedModel !== user.currentModel) {
       user.setModel(resolvedModel);
       await this.storage.saveUserSession(user);
     }
-    const currentModel = models.find(m => m.value === resolvedModel);
+    const currentModel = models.find((m) => m.provider === currentProvider && m.value === resolvedModel);
     const currentModelName = currentModel?.displayName || user.currentModel;
 
-    const text = `🤖 Current model: **${currentModelName}**\n\nSelect a model:`;
-    await this.telegramSender.safeSendMessage(chatId, text, KeyboardFactory.createModelSelectionKeyboard(resolvedModel, this.agentManager.provider));
+    const text = `🤖 Current model: **${currentProvider} - ${currentModelName}**\n\nSelect a model:`;
+    await this.telegramSender.safeSendMessage(
+      chatId,
+      text,
+      KeyboardFactory.createModelSelectionKeyboard(resolvedModel, currentProvider, models)
+    );
   }
 
-  async handleModelChange(ctx: Context, model: AgentModel): Promise<void> {
+  async handleModelChange(ctx: Context, model: AgentModel, targetProvider?: 'claude' | 'codex'): Promise<void> {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
     const user = await this.getOrCreateUser(chatId);
-    const availableModels = await this.agentManager.getAvailableModels();
-    const isValidModel = availableModels.some((m) => m.value === model);
-    if (!isValidModel) {
-      await ctx.reply(this.formatter.formatError('Invalid model for current provider.'), { parse_mode: 'MarkdownV2' });
+    const availableModels = await this.getSelectableModels();
+    const modelInfo = targetProvider
+      ? availableModels.find((m) => m.provider === targetProvider && m.value === model)
+      : availableModels.find((m) => m.value === model);
+
+    if (!modelInfo) {
+      await ctx.reply(this.formatter.formatError('Invalid model selected.'), { parse_mode: 'MarkdownV2' });
       return;
     }
 
@@ -453,16 +463,30 @@ export class CommandHandler {
         }
       }
 
-      // Update model without clearing session
-      user.setModel(model);
+      const currentProvider = this.agentManager.provider;
+      const providerChanged = currentProvider !== modelInfo.provider;
+      if (providerChanged) {
+        if (!this.agentManager.setProvider) {
+          await ctx.reply(this.formatter.formatError('Provider switching is not supported in this runtime.'), { parse_mode: 'MarkdownV2' });
+          return;
+        }
+        await this.agentManager.setProvider(modelInfo.provider);
+        this.config.agent.provider = modelInfo.provider;
+        // Provider sessions are not cross-compatible.
+        delete user.sessionId;
+      }
+
+      user.setModel(modelInfo.value);
       await this.storage.saveUserSession(user);
 
-      const modelInfo = availableModels.find(m => m.value === model);
-      const modelName = modelInfo?.displayName || model;
+      const selectedModelName = modelInfo.displayName || modelInfo.value;
+      const details = providerChanged
+        ? `✅ Model switched to **${modelInfo.provider} - ${selectedModelName}**\n🧹 Session reset because provider changed.`
+        : `✅ Model switched to **${modelInfo.provider} - ${selectedModelName}**`;
 
       const finalMessage = abortMessage
-        ? `${abortMessage}✅ Model switched to **${modelName}**\n🔄 Continue your conversation with the new model.`
-        : `✅ Model switched to **${modelName}**`;
+        ? `${abortMessage}${details}\n🔄 Continue your conversation with the new model.`
+        : details;
 
       await this.telegramSender.safeSendMessage(chatId, finalMessage);
     } catch (error) {
@@ -602,6 +626,16 @@ export class CommandHandler {
         });
       });
     });
+  }
+
+  private async getSelectableModels(): Promise<ModelInfo[]> {
+    await this.agentManager.getAvailableModels();
+    const models = getAllProviderModels();
+    const unique = new Map<string, ModelInfo>();
+    for (const model of models) {
+      unique.set(`${model.provider}:${model.value}`, model);
+    }
+    return Array.from(unique.values());
   }
 
   async getOrCreateUser(chatId: number): Promise<UserSessionModel> {

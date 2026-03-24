@@ -2,7 +2,7 @@ import { Markup } from 'telegraf';
 import { MESSAGES } from '../../../constants/messages';
 import { Project } from '../../../models/project';
 import { AgentSession, AgentProject } from '../../../utils/agent-session-reader';
-import { AgentModel, AgentProvider, getModelsForProvider } from '../../../models/types';
+import { AgentModel, AgentProvider, getModelsForProvider, ModelInfo } from '../../../models/types';
 
 export class KeyboardFactory {
   static createProjectTypeKeyboard(): any {
@@ -215,14 +215,32 @@ export class KeyboardFactory {
     return Markup.inlineKeyboard(keyboard);
   }
 
-  static createModelSelectionKeyboard(currentModel: AgentModel, provider: AgentProvider): any {
-    const buttons = getModelsForProvider(provider).map(model => {
-      const isSelected = model.value === currentModel;
-      const label = isSelected ? `${model.displayName} ✓` : model.displayName;
-      return Markup.button.callback(label, `model_select:${model.value}`);
-    });
+  static createModelSelectionKeyboard(currentModel: AgentModel, provider: AgentProvider, models: ModelInfo[]): any {
+    const rows = [];
+    for (let i = 0; i < models.length; i += 2) {
+      const row = [];
+      const first = models[i];
+      const second = models[i + 1];
 
-    return Markup.inlineKeyboard([buttons, [Markup.button.callback('❌ Cancel', 'cancel')]]);
+      if (first) {
+        const isSelected = first.value === currentModel && first.provider === provider;
+        const label = `${first.provider} - ${first.displayName}${isSelected ? ' ✓' : ''}`;
+        row.push(Markup.button.callback(label, `model_select:${first.provider}:${encodeURIComponent(first.value)}`));
+      }
+
+      if (second) {
+        const isSelected = second.value === currentModel && second.provider === provider;
+        const label = `${second.provider} - ${second.displayName}${isSelected ? ' ✓' : ''}`;
+        row.push(Markup.button.callback(label, `model_select:${second.provider}:${encodeURIComponent(second.value)}`));
+      }
+
+      if (row.length > 0) {
+        rows.push(row);
+      }
+    }
+
+    rows.push([Markup.button.callback('❌ Cancel', 'cancel')]);
+    return Markup.inlineKeyboard(rows);
   }
 
   // Onboarding keyboards

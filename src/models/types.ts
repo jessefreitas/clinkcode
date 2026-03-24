@@ -155,6 +155,10 @@ export function getModelsForProvider(provider: AgentProvider): ModelInfo[] {
   return provider === 'codex' ? runtimeCodexModels : CLAUDE_MODELS;
 }
 
+export function getAllProviderModels(): ModelInfo[] {
+  return [...CLAUDE_MODELS, ...runtimeCodexModels];
+}
+
 export function resolveModelForProvider(provider: AgentProvider, currentModel: AgentModel): AgentModel {
   const providerModels = getModelsForProvider(provider);
   const hasModel = providerModels.some((model) => model.value === currentModel);

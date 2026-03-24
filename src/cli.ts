@@ -18,6 +18,7 @@ const PID_FILE = join(CONFIG_DIR, 'gateway.pid');
 
 interface CliConfig {
   token: string;
+  agentProvider: 'claude' | 'codex';
   agentCliPath: string;
   workDir: string;
   storageType: 'memory' | 'redis';
@@ -34,6 +35,7 @@ interface CliConfig {
 
 const DEFAULTS: CliConfig = {
   token: '',
+  agentProvider: 'claude',
   agentCliPath: 'claude',
   workDir: join(homedir(), 'clinkcode-projects'),
   storageType: 'memory',
@@ -67,6 +69,7 @@ function saveCliConfig(config: CliConfig): void {
 function generateEnvFile(config: CliConfig): void {
   const lines = [
     `TG_BOT_TOKEN=${config.token}`,
+    `AGENT_PROVIDER=${config.agentProvider}`,
     `AGENT_CLI_PATH=${config.agentCliPath}`,
     `WORK_DIR=${config.workDir}`,
     `STORAGE_TYPE=${config.storageType}`,
@@ -125,6 +128,7 @@ function statusBar(config: CliConfig): void {
     '',
     `  ${dim('Gateway'.padEnd(16))} ${gwStatus}`,
     `  ${dim('Token'.padEnd(16))} ${maskToken(config.token)}`,
+    `  ${dim('Provider'.padEnd(16))} ${chalk.white(config.agentProvider)}`,
     `  ${dim('Agent CLI'.padEnd(16))} ${accent(config.agentCliPath)}`,
     `  ${dim('Work dir'.padEnd(16))} ${chalk.blue(config.workDir)}`,
     `  ${dim('Storage'.padEnd(16))} ${chalk.white(config.storageType)}`,
@@ -462,6 +466,25 @@ async function handleAgentCliPath(config: CliConfig): Promise<void> {
   return mainMenu();
 }
 
+async function handleProvider(config: CliConfig): Promise<void> {
+  const provider = await p.select({
+    message: 'Select agent provider',
+    options: [
+      { value: 'claude', label: 'Claude' },
+      { value: 'codex', label: 'Codex' },
+      { value: '__back__', label: '← Back' },
+    ],
+    initialValue: config.agentProvider,
+  });
+
+  if (p.isCancel(provider) || provider === '__back__') return mainMenu();
+
+  config.agentProvider = provider as 'claude' | 'codex';
+  saveCliConfig(config);
+  p.log.success(`Provider set to ${accent(config.agentProvider)}`);
+  return mainMenu();
+}
+
 async function handleWorkDir(config: CliConfig): Promise<void> {
   const workDir = await p.text({
     message: 'Working directory for projects',
@@ -598,6 +621,7 @@ function startGateway(): void {
   const envVars: Record<string, string> = {
     ...process.env as Record<string, string>,
     TG_BOT_TOKEN: config.token,
+    AGENT_PROVIDER: config.agentProvider,
     AGENT_CLI_PATH: config.agentCliPath,
     WORK_DIR: config.workDir,
     STORAGE_TYPE: config.storageType,
@@ -680,6 +704,7 @@ async function mainMenu(): Promise<void> {
 
   options.push(
     { value: 'token', label: 'Telegram token' },
+    { value: 'provider', label: 'Agent provider' },
     { value: 'agentcli', label: 'Agent CLI path' },
     { value: 'workdir', label: 'Working directory' },
     { value: 'users', label: 'Allowed users' },
@@ -723,6 +748,8 @@ async function mainMenu(): Promise<void> {
       return mainMenu();
     case 'token':
       return handleToken(config);
+    case 'provider':
+      return handleProvider(config);
     case 'agentcli':
       return handleAgentCliPath(config);
     case 'workdir':
@@ -779,8 +806,22 @@ ${chalk.bold('Usage:')}
   clinkcode start            Start the gateway
   clinkcode stop             Stop the gateway
   clinkcode status           Show gateway status
+  clinkcode provider <name>  Set provider (claude|codex)
   clinkcode help             Show this help
 `);
+    return;
+  }
+
+  if (cmd === 'provider') {
+    const value = (args[1] || '').toLowerCase();
+    if (value !== 'claude' && value !== 'codex') {
+      console.error('Usage: clinkcode provider <claude|codex>');
+      process.exit(1);
+    }
+    const config = loadCliConfig();
+    config.agentProvider = value as 'claude' | 'codex';
+    saveCliConfig(config);
+    console.log(`Provider set to ${config.agentProvider}`);
     return;
   }
 

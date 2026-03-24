@@ -20,5 +20,6 @@ export interface IAgentManager {
   abortQuery(chatId: number): Promise<boolean>;
   isQueryRunning(chatId: number): boolean;
   getAvailableModels(): Promise<ModelInfo[]>;
+  setProvider?(provider: AgentProvider): Promise<void> | void;
   shutdown(): Promise<void>;
 }
