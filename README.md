@@ -1,20 +1,16 @@
-# Telegram Claude Code Bot
+# Clink Code
 
-[🇨🇳 中文文档](README-zh.md)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jonesfernandess/clinkcode/chore/update-project-readme/assets/banner.jpeg" alt="Clink Code" />
+</p>
 
-<a href="https://www.producthunt.com/products/chatcode?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-chatcode" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1001019&theme=light&t=1754407798193" alt="ChatCode - A vibe coding telegram bot. | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
-
-## Demo Video
-
-[![Demo Video](https://img.youtube.com/vi/rhsV6_z9G9c/0.jpg)](https://www.youtube.com/watch?v=rhsV6_z9G9c)
-
-A powerful Telegram bot that integrates with Claude Code to provide AI-powered coding assistance directly through Telegram. **Uses telegram polling mode - runs on any computer with internet connection, no public IP or domain required.**
+A powerful Telegram bot that integrates with Claude Code via the Claude Agent SDK to provide AI-powered coding assistance directly through Telegram. **Uses telegram polling mode - runs on any computer with internet connection, no public IP or domain required.**
 
 This bot allows users to interact with Claude's coding capabilities in a conversational interface with features like project management, file browsing, and comprehensive permission controls.
 
 ## Features
 
-- **Claude Code Integration**: Direct integration with Anthropic's Claude Code SDK
+- **Claude Agent SDK Integration**: Direct integration with Anthropic's Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`)
 - **Project Management**: Create, list, and manage coding projects
 - **File Browser**: Navigate and explore project directories through Telegram
 - **Model Selection**: Switch between Claude Opus 4.5, Sonnet 4.5, and Haiku 4.5 models
@@ -22,7 +18,8 @@ This bot allows users to interact with Claude's coding capabilities in a convers
 - **Session Management**: Persistent user sessions with Redis or memory storage
 - **Tool Handling**: Advanced tool use detection and management
 - **Message Batching**: Efficient message processing and delivery
-- **Permission Control**: Advanced permission system for secure tool usage
+- **Interactive CLI**: Setup wizard and gateway management via `clinkcode` command
+- **Onboarding Flow**: Guided first-time setup for new Telegram users
 - **Photo Input**: Send images to Claude for visual analysis
 - **Voice Input**: Send voice messages, auto-transcribed via ASR and forwarded to Claude
 - **User Whitelist**: Bypass authentication for trusted Telegram user IDs
@@ -78,45 +75,62 @@ This bot uses **Telegram polling mode**, which means:
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd chatcode
+git clone https://github.com/jonesfernandess/clinkcode.git
+cd clinkcode
 ```
 
 2. Install dependencies:
 ```bash
-# Using pnpm (recommended)
 pnpm install
-
-# Or using npm/yarn
-npm install  # yarn install
 ```
 
-3. Create a Telegram bot and get your token:
-   - Open Telegram and search for `@BotFather`
-   - Send `/newbot` command to BotFather
-   - Follow the instructions to choose a name and username for your bot
-   - Copy the bot token provided by BotFather
-   - Add the token to your `.env` file (see Configuration section below)
-
-4. Configure environment variables (see Configuration section below)
-
-5. Build and start:
+3. Run the interactive setup wizard:
 ```bash
-# Development mode
-pnpm run dev
-
-# Production mode
-pnpm run build && pnpm start
+pnpm run build
+pnpm run cli
+# or, if installed globally:
+clinkcode setup
 ```
 
-Simply configure your environment variables and run - the bot will poll Telegram's servers directly.
+The wizard will guide you through:
+- Detecting your Claude CLI installation
+- Setting up your Telegram bot token (from `@BotFather`)
+- Configuring allowed users
+- Choosing a working directory
+- Selecting storage type
+
+4. Start the bot:
+```bash
+# Via CLI (recommended)
+pnpm run cli
+# Then select "Start gateway" from the menu
+
+# Or directly:
+pnpm run dev    # Development mode
+pnpm run build && pnpm start  # Production mode
+```
+
+### CLI Commands
+
+After building, the `clinkcode` CLI provides:
+
+```bash
+clinkcode                  # Interactive menu
+clinkcode setup            # Run setup wizard
+clinkcode start            # Start the gateway
+clinkcode stop             # Stop the gateway
+clinkcode status           # Show gateway status
+clinkcode help             # Show help
+```
+
+Configuration is stored in `~/.clinkcode/` (config.json and .env).
 
 ### Cloudflare Workers (Optional)
 
 **When `WORKERS_ENABLED=true`, you need to deploy Cloudflare Workers and configure environment variables:**
 
 #### 1. Local Environment Setup
-In your `.env` file in the project root:
+In your `~/.clinkcode/.env` file (or configure via the CLI wizard):
 ```env
 WORKERS_ENABLED=true
 WORKERS_ENDPOINT=your_workers_endpoint
@@ -148,7 +162,9 @@ The Workers service provides:
 
 ## Configuration
 
-Create a `.env` file with the following environment variables:
+The recommended way to configure the bot is through the interactive CLI wizard (`clinkcode setup`), which stores settings in `~/.clinkcode/`.
+
+Alternatively, you can create a `.env` file manually with the following environment variables:
 
 ### Required Configuration
 
@@ -156,7 +172,7 @@ Create a `.env` file with the following environment variables:
 TG_BOT_TOKEN=your_telegram_bot_token  # Get this from @BotFather on Telegram
 BOT_MODE=polling  # Uses polling mode - no public IP or domain needed
 CLAUDE_CODE_PATH=claude
-WORK_DIR=/tmp/tg-claudecode  # Directory where GitHub projects will be cloned here
+WORK_DIR=~/clinkcode-projects  # Directory where GitHub projects will be cloned
 ```
 
 ### Optional Configuration
@@ -224,7 +240,7 @@ openssl rand -hex 16
 
 ### Bot Commands
 
-- `/start` - Initialize the bot and create user session
+- `/start` - Initialize the bot and start onboarding for new users
 - `/createproject` - Create a new coding project
 - `/listproject` - List all available projects
 - `/exitproject` - Exit current project
@@ -234,7 +250,10 @@ openssl rand -hex 16
 - `/auth` - Authentication management
 - `/abort` - Abort current Claude query
 - `/clear` - Clear current session
+- `/resume` - Resume a previous Claude session
 - `/model` - View and switch Claude models
+- `/diff` - View diff of current changes
+- `/resetonboarding` - Restart the onboarding flow
 
 ### Model Selection
 
@@ -293,7 +312,7 @@ Simply send text messages to the bot to interact with Claude Code. The bot will:
 The bot is built with a modular architecture consisting of:
 
 - **Main Application** (`src/main.ts`): Entry point and orchestration
-- **Claude Manager** (`src/handlers/claude.ts`): Claude Code SDK integration
+- **Claude Manager** (`src/handlers/claude.ts`): Claude Agent SDK integration
 - **Telegram Handler** (`src/handlers/telegram.ts`): Telegram bot logic coordination
 - **Storage Layer**: Redis or memory-based session storage
 - **Permission System**: Integrated permission control for tool usage
@@ -346,21 +365,38 @@ The architecture follows this flow:
 
 ```
 src/
+├── cli.ts           # Interactive CLI (clinkcode command)
+├── main.ts          # Entry point and orchestration
 ├── config/          # Configuration management
 ├── constants/       # Constants and messages
 ├── handlers/        # Core handlers
-│   ├── claude.ts    # Claude Code integration
+│   ├── claude.ts    # Claude Agent SDK integration
 │   ├── telegram.ts  # Telegram coordination
 │   ├── github.ts    # GitHub operations
 │   ├── directory.ts # Directory management
+│   ├── permission-manager.ts # Permission handling
 │   └── telegram/    # Telegram-specific handlers
+│       ├── callbacks/   # Inline keyboard interactions
+│       ├── commands/    # Bot command handler
+│       ├── file-browser/ # Directory navigation
+│       ├── keyboards/   # Keyboard factory
+│       ├── messages/    # Text, photo, voice handling
+│       ├── project/     # Project management
+│       ├── tools/       # Tool approval/rejection
+│       └── utils/       # Telegram utilities
 ├── models/          # Data models and types
-
-├── queue/          # Message batching
-├── server/         # Express server for webhooks
-├── services/       # Business logic services
-├── storage/        # Storage abstraction layer
-└── utils/          # Utility functions
+├── queue/           # Message batching
+├── server/          # Express server
+├── services/        # Business logic services
+│   ├── auth-service.ts        # Authentication
+│   ├── onboarding-store.ts    # Onboarding state
+│   └── telegram-sender.ts     # Message delivery
+├── storage/         # Storage abstraction layer
+└── utils/           # Utility functions
+    ├── formatter.ts             # Message formatting
+    ├── stream-manager.ts        # Streaming responses
+    ├── claude-session-reader.ts # Session resumption
+    └── async-queue.ts           # Async queue
 
 asr-service/        # Fun-ASR speech recognition service
 workers/            # Cloudflare Workers integration
@@ -368,20 +404,20 @@ workers/            # Cloudflare Workers integration
 
 ### Available Scripts
 
-Use `pnpm`, `npm`, or `yarn` to run these scripts:
-
-- `[pnpm|npm|yarn] run build` - Build TypeScript to JavaScript
-- `[pnpm|npm|yarn] start` - Start the production bot  
-- `[pnpm|npm|yarn] run dev` - Start development server with watch mode
-- `[pnpm|npm|yarn] run watch` - Watch mode for development
-- `[pnpm|npm|yarn] run lint` - Run ESLint
-- `[pnpm|npm|yarn] run lint:fix` - Fix linting issues
-- `[pnpm|npm|yarn] run format` - Format code with Prettier
+- `pnpm run build` - Build TypeScript to JavaScript
+- `pnpm start` - Start the production bot
+- `pnpm run cli` - Launch the interactive CLI menu
+- `pnpm run dev` - Start development server with watch mode
+- `pnpm run watch` - Watch mode for development
+- `pnpm run lint` - Run ESLint
+- `pnpm run lint:fix` - Fix linting issues
+- `pnpm run format` - Format code with Prettier
+- `pnpm run asr` - Start the ASR service (requires venv setup)
 
 ### Key Components
 
 #### Claude Manager
-Handles all interactions with the Claude Code SDK, including:
+Handles all interactions with the Claude Agent SDK, including:
 - Message streaming and processing
 - Session management and resumption
 - Tool use detection and extraction
@@ -422,4 +458,4 @@ For issues and questions:
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Nickqiaoo/chatcode&type=Date)](https://www.star-history.com/#Nickqiaoo/chatcode&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=jonesfernandess/clinkcode&type=Date)](https://www.star-history.com/#jonesfernandess/clinkcode&Date)
