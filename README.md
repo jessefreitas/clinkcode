@@ -1,7 +1,7 @@
 # Clink Code
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jonesfernandess/clinkcode/main/assets/banner.jpeg" alt="Clink Code" />
+  <img src="https://raw.githubusercontent.com/jonesfernandess/clinkcode/chore/update-project-readme/assets/banner.jpeg" alt="Clink Code" />
 </p>
 
 A powerful Telegram bot that integrates with Claude Code via the Claude Agent SDK to provide AI-powered coding assistance directly through Telegram. **Uses telegram polling mode - runs on any computer with internet connection, no public IP or domain required.**
