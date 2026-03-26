@@ -451,7 +451,6 @@ export class CodexManager implements IAgentManager {
       return;
     }
 
-    // Warm up dynamic model list in background so `/model` feels instant later.
     this.dynamicModelFetchInFlight = this.fetchCodexModelsFromAgent()
       .then((models) => {
         if (models.length > 0) {
@@ -472,71 +471,8 @@ export class CodexManager implements IAgentManager {
   }
 
   private async fetchCodexModelsFromAgent(): Promise<ModelInfo[]> {
-    const modelPrompt = [
-      "Return ONLY valid JSON (no markdown) as an array of objects compatible with this TypeScript type:",
-      '{ value: string; provider: "codex"; displayName: string; description: string }[]',
-      "List currently available Codex-compatible models for this environment/account.",
-      "Do not include unavailable models.",
-      "Example item:",
-      '{"value":"gpt-5-codex","provider":"codex","displayName":"GPT-5 Codex","description":"Coding optimized"}',
-    ].join("\n");
-
-    const thread = this.codex.startThread({
-      sandboxMode: "read-only",
-      approvalPolicy: "never",
-      model: "gpt-5-codex-mini",
-      skipGitRepoCheck: true,
-      webSearchEnabled: false,
-      networkAccessEnabled: true,
-    });
-
-    const turn = await thread.run(modelPrompt);
-    return this.parseModelInfoArray(turn.finalResponse);
+    // Keep dynamic pipeline in place, but hardcode currently supported Codex models for stability.
+    return DEFAULT_CODEX_MODELS.map((model) => ({ ...model }));
   }
 
-  private parseModelInfoArray(text: string): ModelInfo[] {
-    const trimmed = text.trim();
-    const start = trimmed.indexOf("[");
-    const end = trimmed.lastIndexOf("]");
-    if (start === -1 || end === -1 || end <= start) {
-      return [];
-    }
-
-    try {
-      const parsed = JSON.parse(trimmed.slice(start, end + 1));
-      if (!Array.isArray(parsed)) return [];
-      const models: ModelInfo[] = [];
-
-      for (const item of parsed) {
-        if (!item || typeof item !== "object") continue;
-        const value =
-          typeof (item as any).value === "string"
-            ? (item as any).value.trim()
-            : "";
-        if (!value) continue;
-
-        const displayName =
-          typeof (item as any).displayName === "string" &&
-          (item as any).displayName.trim()
-            ? (item as any).displayName.trim()
-            : value;
-        const description =
-          typeof (item as any).description === "string" &&
-          (item as any).description.trim()
-            ? (item as any).description.trim()
-            : "Available";
-
-        models.push({
-          value,
-          provider: "codex",
-          displayName,
-          description,
-        });
-      }
-
-      return models;
-    } catch {
-      return [];
-    }
-  }
 }

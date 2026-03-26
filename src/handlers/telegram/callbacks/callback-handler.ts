@@ -420,7 +420,10 @@ export class CallbackHandler {
         case 'onboarding_accept':
           user.setState(UserState.OnboardingModel);
           await this.storage.saveUserSession(user);
-          await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel, this.agentManager.provider) });
+          await ctx.reply(
+            MESSAGES.ONBOARDING.MODEL_SELECTION,
+            { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel, user.hasSelectedModel) }
+          );
           break;
 
         case 'onboarding_decline':
@@ -428,6 +431,14 @@ export class CallbackHandler {
           break;
 
         case 'onboarding_model_done':
+          if (!user.hasSelectedModel) {
+            await ctx.reply(this.formatter.formatError('Please select a model before continuing.'), { parse_mode: 'MarkdownV2' });
+            await ctx.reply(
+              MESSAGES.ONBOARDING.MODEL_SELECTION,
+              { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel, user.hasSelectedModel) }
+            );
+            break;
+          }
           user.setState(UserState.OnboardingProject);
           await this.storage.saveUserSession(user);
           await ctx.reply(MESSAGES.ONBOARDING.PROJECT_GUIDE, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingProjectKeyboard() });
@@ -456,16 +467,24 @@ export class CallbackHandler {
         default:
           if (data.startsWith('onboarding_model:')) {
             const modelValue = data.replace('onboarding_model:', '') as AgentModel;
-            const onboardingModels = await this.agentManager.getAvailableModels();
-            const validOnboardingModel = onboardingModels.some((m) => m.value === modelValue);
-            if (!validOnboardingModel) {
+            const onboardingModels = await this.getSelectableModels();
+            const selectedModel = onboardingModels.find((m) => m.value === modelValue);
+            if (!selectedModel) {
               await this.bot.telegram.sendMessage(chatId, this.formatter.formatError('Invalid model selected.'), { parse_mode: 'MarkdownV2' });
               return;
+            }
+            if (this.agentManager.provider !== selectedModel.provider && this.agentManager.setProvider) {
+              await this.agentManager.setProvider(selectedModel.provider);
+              this.config.agent.provider = selectedModel.provider;
+              delete user.sessionId;
             }
             user.setModel(modelValue);
             await this.storage.saveUserSession(user);
             // Update keyboard with selection
-            await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(modelValue, this.agentManager.provider) });
+            await ctx.reply(
+              MESSAGES.ONBOARDING.MODEL_SELECTION,
+              { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(modelValue, user.hasSelectedModel) }
+            );
           }
       }
     } catch (error) {

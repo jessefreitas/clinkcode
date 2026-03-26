@@ -57,8 +57,16 @@ export class CommandHandler {
       return;
     }
 
-    // Existing user - short welcome message
-    await ctx.reply(MESSAGES.ONBOARDING.WELCOME_RETURNING, { parse_mode: 'Markdown' });
+    // Require model selection on every /start invocation.
+    user.hasSelectedModel = false;
+    delete user.sessionId;
+    await this.storage.saveUserSession(user);
+
+    const models = await this.getSelectableModels();
+    await ctx.reply(
+      `🤖 ${MESSAGES.ONBOARDING.WELCOME_RETURNING}\n\nPlease choose which model to use for this session:`,
+      { parse_mode: 'Markdown', ...KeyboardFactory.createModelSelectionKeyboard(user.currentModel, this.agentManager.provider, models) }
+    );
   }
 
   async handleResetOnboarding(ctx: Context): Promise<void> {
@@ -89,7 +97,10 @@ export class CommandHandler {
         await ctx.reply(MESSAGES.ONBOARDING.DISCLAIMER, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingDisclaimerKeyboard() });
         break;
       case UserState.OnboardingModel:
-        await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel, this.agentManager.provider) });
+        await ctx.reply(
+          MESSAGES.ONBOARDING.MODEL_SELECTION,
+          { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel, user.hasSelectedModel) }
+        );
         break;
       case UserState.OnboardingProject:
         await ctx.reply(MESSAGES.ONBOARDING.PROJECT_GUIDE, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingProjectKeyboard() });

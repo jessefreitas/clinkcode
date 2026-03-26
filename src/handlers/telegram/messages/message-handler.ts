@@ -1,6 +1,6 @@
 import { Context, Telegraf } from 'telegraf';
 import { UserSessionModel } from '../../../models/user-session';
-import { UserState, PermissionMode } from '../../../models/types';
+import { UserState, PermissionMode, getAllProviderModels } from '../../../models/types';
 import { IStorage } from '../../../storage/interface';
 import { GitHubManager } from '../../github';
 import { MessageFormatter } from '../../../utils/formatter';
@@ -58,6 +58,13 @@ export class MessageHandler {
         await this.handleASREditInput(ctx, user, text);
         break;
       case UserState.InSession:
+        if (!user.hasSelectedModel) {
+          await ctx.reply(
+            'Please choose a model first before sending prompts:',
+            KeyboardFactory.createModelSelectionKeyboard(user.currentModel, this.agentManager.provider, getAllProviderModels())
+          );
+          break;
+        }
         await this.handleSessionInput(ctx, user, text);
         break;
       default:

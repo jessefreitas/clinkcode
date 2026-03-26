@@ -2,7 +2,7 @@ import { Markup } from 'telegraf';
 import { MESSAGES } from '../../../constants/messages';
 import { Project } from '../../../models/project';
 import { AgentSession, AgentProject } from '../../../utils/agent-session-reader';
-import { AgentModel, AgentProvider, getModelsForProvider, ModelInfo } from '../../../models/types';
+import { AgentModel, AgentProvider, getAllProviderModels, ModelInfo } from '../../../models/types';
 
 export class KeyboardFactory {
   static createProjectTypeKeyboard(): any {
@@ -259,10 +259,10 @@ export class KeyboardFactory {
     ]);
   }
 
-  static createOnboardingModelKeyboard(currentModel: AgentModel, provider: AgentProvider): any {
-    const buttons = getModelsForProvider(provider).map(model => {
-      const isSelected = model.value === currentModel;
-      const label = isSelected ? `${model.displayName} ✓` : model.displayName;
+  static createOnboardingModelKeyboard(currentModel: AgentModel, hasSelectedModel: boolean): any {
+    const buttons = getAllProviderModels().map(model => {
+      const isSelected = hasSelectedModel && model.value === currentModel;
+      const label = `${model.provider} - ${model.displayName}${isSelected ? ' ✓' : ''}`;
       return Markup.button.callback(label, `onboarding_model:${model.value}`);
     });
 
