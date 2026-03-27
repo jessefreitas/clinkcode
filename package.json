@@ -11,7 +11,7 @@
   "scripts": {
     "prebuild": "rimraf dist",
     "build": "tsc",
-    "start": "vite-node dist/main.js",
+    "start": "vite-node src/main.ts",
     "cli": "vite-node src/cli.ts",
     "dev": "DEBUG=* vite-node --watch src/main.ts",
     "watch": "tsc --watch",

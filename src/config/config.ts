@@ -22,18 +22,20 @@ export interface WebhookConfig {
   secretToken?: string | undefined;
 }
 
-export interface AgentCliConfig {
+export interface ClaudeProviderConfig {
   binaryPath: string;
+}
+
+export interface CodexProviderConfig {
+  binaryPath?: string;
+  apiKey?: string;
+  baseUrl?: string;
 }
 
 export interface AgentConfig {
   provider: AgentProvider;
-}
-
-export interface CodexConfig {
-  binaryPath?: string;
-  apiKey?: string;
-  baseUrl?: string;
+  claude: ClaudeProviderConfig;
+  codex: CodexProviderConfig;
 }
 
 export interface WorkDirConfig {
@@ -63,13 +65,9 @@ export interface SecurityConfig {
   whitelistedUserIds: number[];
 }
 
-
-
 export interface Config {
   telegram: TelegramConfig;
   agent: AgentConfig;
-  agentCli: AgentCliConfig;
-  codex: CodexConfig;
   workDir: WorkDirConfig;
   storage: StorageConfig;
   webhook?: WebhookConfig;
@@ -87,10 +85,10 @@ function parseDuration(s: string): number {
   if (!match) {
     return 30 * 60 * 1000; // 30 minutes default
   }
-  
+
   const value = parseInt(match[1]!, 10);
   const unit = match[2];
-  
+
   switch (unit) {
     case 's':
       return value * 1000;
@@ -113,7 +111,7 @@ export function loadConfig(): Config {
   const mode = getEnvOrDefault('BOT_MODE', 'polling') as 'polling' | 'webhook';
   const storageType = getEnvOrDefault('STORAGE_TYPE', 'redis') as 'redis' | 'memory';
   const agentProvider = getEnvOrDefault('AGENT_PROVIDER', DEFAULT_PROVIDER) as AgentProvider;
-  
+
   const agentCliPath = process.env.AGENT_CLI_PATH || 'claude';
 
   const config: Config = {
@@ -123,14 +121,14 @@ export function loadConfig(): Config {
     },
     agent: {
       provider: agentProvider,
-    },
-    agentCli: {
-      binaryPath: agentCliPath,
-    },
-    codex: {
-      ...(process.env.CODEX_PATH ? { binaryPath: process.env.CODEX_PATH } : {}),
-      ...(process.env.CODEX_API_KEY ? { apiKey: process.env.CODEX_API_KEY } : {}),
-      ...(process.env.CODEX_BASE_URL ? { baseUrl: process.env.CODEX_BASE_URL } : {}),
+      claude: {
+        binaryPath: agentCliPath,
+      },
+      codex: {
+        ...(process.env.CODEX_PATH ? { binaryPath: process.env.CODEX_PATH } : {}),
+        ...(process.env.CODEX_API_KEY ? { apiKey: process.env.CODEX_API_KEY } : {}),
+        ...(process.env.CODEX_BASE_URL ? { baseUrl: process.env.CODEX_BASE_URL } : {}),
+      },
     },
     workDir: {
       workDir: getEnvOrDefault('WORK_DIR', '/tmp/tg-claudecode'),
@@ -180,10 +178,10 @@ export function validateConfig(config: Config): void {
     throw new Error('AGENT_PROVIDER must be either "claude" or "codex"');
   }
 
-  if (config.agent.provider === 'claude' && !config.agentCli.binaryPath) {
+  if (config.agent.provider === 'claude' && !config.agent.claude.binaryPath) {
     throw new Error('AGENT_CLI_PATH is required');
   }
-  
+
   if (!config.workDir.workDir) {
     throw new Error('WORK_DIR is required');
   }

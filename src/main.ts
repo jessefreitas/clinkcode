@@ -55,12 +55,12 @@ async function main(): Promise<void> {
     };
 
     const codexOptions = {
-      ...(config.codex.binaryPath ? { codexPathOverride: config.codex.binaryPath } : {}),
-      ...(config.codex.apiKey ? { apiKey: config.codex.apiKey } : {}),
-      ...(config.codex.baseUrl ? { baseUrl: config.codex.baseUrl } : {}),
+      ...(config.agent.codex.binaryPath ? { codexPathOverride: config.agent.codex.binaryPath } : {}),
+      ...(config.agent.codex.apiKey ? { apiKey: config.agent.codex.apiKey } : {}),
+      ...(config.agent.codex.baseUrl ? { baseUrl: config.agent.codex.baseUrl } : {}),
     };
 
-    const claudeManager = new ClaudeManager(storage, permissionManager, callbacks, config.agentCli.binaryPath);
+    const claudeManager = new ClaudeManager(storage, permissionManager, callbacks, config.agent.claude.binaryPath);
     const codexManager = new CodexManager(storage, callbacks, {
       ...codexOptions,
     });
