@@ -5,7 +5,7 @@ import { IStorage, ToolData } from '../../../storage/interface';
 import { MessageFormatter } from '../../../utils/formatter';
 import { Config } from '../../../config/config';
 import { TelegramSender } from '../../../services/telegram-sender';
-import { ClaudeManager } from '../../claude';
+import { IAgentManager } from '../../agent-manager';
 
 export interface ToolInfo {
   toolId: string;
@@ -22,7 +22,7 @@ export class ToolHandler {
     private formatter: MessageFormatter,
     private config: Config,
     private bot: Telegraf,
-    private claudeManager?: ClaudeManager
+    private agentManager?: IAgentManager
   ) {
     this.telegramSender = new TelegramSender(bot);
   }
@@ -321,12 +321,12 @@ export class ToolHandler {
   }
 
   private async abortAndContinue(chatId: number): Promise<void> {
-    if (this.claudeManager) {
+    if (this.agentManager) {
       // Abort the current request
-      await this.claudeManager.abortQuery(chatId);
+      await this.agentManager.abortQuery(chatId);
       
       // Send a continue message
-      await this.claudeManager.addMessageToStream(chatId, 'continue');
+      await this.agentManager.addMessageToStream(chatId, 'continue');
     }
   }
 }

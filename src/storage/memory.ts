@@ -60,12 +60,12 @@ export class MemoryStorage implements IStorage {
     await this.saveUserSession(userSession);
   }
 
-  async startClaudeSession(userSession: UserSessionModel, sessionId: string, projectPath?: string): Promise<void> {
+  async startAgentSession(userSession: UserSessionModel, sessionId: string, projectPath?: string): Promise<void> {
     userSession.startSession(sessionId, projectPath);
     await this.saveUserSession(userSession);
   }
 
-  async endClaudeSession(userSession: UserSessionModel): Promise<void> {
+  async endAgentSession(userSession: UserSessionModel): Promise<void> {
     userSession.endSession();
     await this.saveUserSession(userSession);
   }

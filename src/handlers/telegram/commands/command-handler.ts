@@ -1,35 +1,35 @@
 import { Context, Markup, Input } from 'telegraf';
 import { UserSessionModel } from '../../../models/user-session';
-import { UserState, PermissionMode, ClaudeModel, AVAILABLE_MODELS } from '../../../models/types';
+import { UserState, PermissionMode, AgentModel, ModelInfo, getAllProviderModels, resolveModelForProvider } from '../../../models/types';
 import { IStorage } from '../../../storage/interface';
 import { MessageFormatter } from '../../../utils/formatter';
 import { MESSAGES } from '../../../constants/messages';
 import { KeyboardFactory } from '../keyboards/keyboard-factory';
-import { ClaudeManager } from '../../claude';
 import { AuthService } from '../../../services/auth-service';
 import { Config } from '../../../config/config';
 import { TelegramSender } from '../../../services/telegram-sender';
-import { ClaudeSessionReader } from '../../../utils/claude-session-reader';
+import { AgentSessionReader } from '../../../utils/agent-session-reader';
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { html as diff2htmlHtml } from 'diff2html';
+import { IAgentManager } from '../../agent-manager';
 
 export class CommandHandler {
   private authService: AuthService;
   private telegramSender: TelegramSender;
-  private sessionReader: ClaudeSessionReader;
+  private sessionReader: AgentSessionReader;
 
   constructor(
     private storage: IStorage,
     private formatter: MessageFormatter,
-    private claudeSDK: ClaudeManager,
+    private agentManager: IAgentManager,
     private config: Config,
     private bot: any
   ) {
     this.authService = new AuthService(config);
     this.telegramSender = new TelegramSender(bot);
-    this.sessionReader = new ClaudeSessionReader();
+    this.sessionReader = new AgentSessionReader();
   }
 
   async handleStart(ctx: Context): Promise<void> {
@@ -57,8 +57,16 @@ export class CommandHandler {
       return;
     }
 
-    // Existing user - short welcome message
-    await ctx.reply(MESSAGES.ONBOARDING.WELCOME_RETURNING, { parse_mode: 'Markdown' });
+    // Require model selection on every /start invocation.
+    user.hasSelectedModel = false;
+    delete user.sessionId;
+    await this.storage.saveUserSession(user);
+
+    const models = await this.getSelectableModels();
+    await ctx.reply(
+      `🤖 ${MESSAGES.ONBOARDING.WELCOME_RETURNING}\n\nPlease choose which model to use for this session:`,
+      { parse_mode: 'Markdown', ...KeyboardFactory.createModelSelectionKeyboard(user.currentModel, this.agentManager.provider, models) }
+    );
   }
 
   async handleResetOnboarding(ctx: Context): Promise<void> {
@@ -89,7 +97,10 @@ export class CommandHandler {
         await ctx.reply(MESSAGES.ONBOARDING.DISCLAIMER, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingDisclaimerKeyboard() });
         break;
       case UserState.OnboardingModel:
-        await ctx.reply(MESSAGES.ONBOARDING.MODEL_SELECTION, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel) });
+        await ctx.reply(
+          MESSAGES.ONBOARDING.MODEL_SELECTION,
+          { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingModelKeyboard(user.currentModel, user.hasSelectedModel) }
+        );
         break;
       case UserState.OnboardingProject:
         await ctx.reply(MESSAGES.ONBOARDING.PROJECT_GUIDE, { parse_mode: 'Markdown', ...KeyboardFactory.createOnboardingProjectKeyboard() });
@@ -132,17 +143,17 @@ export class CommandHandler {
     const user = await this.getOrCreateUser(chatId);
 
     try {
-      // Read projects from Claude Code's ~/.claude/projects/ directory
-      const claudeProjects = await this.sessionReader.listAllProjects(20);
+      // Read projects from the local provider session catalog (~/.claude/projects by default).
+      const catalogProjects = await this.sessionReader.listAllProjects(20);
 
-      if (claudeProjects.length === 0) {
+      if (catalogProjects.length === 0) {
         const text = `📋 *Projects*\n\nNo existing projects found. Create one to get started:`;
-        await ctx.reply(text, { parse_mode: 'Markdown', ...KeyboardFactory.createClaudeProjectListKeyboard([]) });
+        await ctx.reply(text, { parse_mode: 'Markdown', ...KeyboardFactory.createProjectCatalogKeyboard([]) });
         return;
       }
 
-      const listText = `📋 *Projects (${claudeProjects.length})*\n\nSelect a project or create a new one:`;
-      await ctx.reply(listText, { parse_mode: 'Markdown', ...KeyboardFactory.createClaudeProjectListKeyboard(claudeProjects) });
+      const listText = `📋 *Projects (${catalogProjects.length})*\n\nSelect a project or create a new one:`;
+      await ctx.reply(listText, { parse_mode: 'Markdown', ...KeyboardFactory.createProjectCatalogKeyboard(catalogProjects) });
     } catch (error) {
       await ctx.reply(this.formatter.formatError('Failed to load projects. Please try again.'), { parse_mode: 'MarkdownV2' });
       console.error('Error loading projects:', error);
@@ -166,7 +177,7 @@ export class CommandHandler {
       const projectName = project?.name || 'Unknown Project';
       
       // Clean up active streams before ending session
-      this.claudeSDK.abortQuery(chatId);
+      this.agentManager.abortQuery(chatId);
       
       user.endSession();
       user.clearActiveProject();
@@ -248,9 +259,9 @@ export class CommandHandler {
     try {
       delete user.sessionId;
       await this.storage.saveUserSession(user);
-      await this.claudeSDK.abortQuery(chatId);
+      await this.agentManager.abortQuery(chatId);
 
-      await ctx.reply('✅ Session cleared. Your Claude Code session has been reset.');
+      await ctx.reply('✅ Session cleared. Your AI coding agent session has been reset.');
     } catch (error) {
       await ctx.reply(this.formatter.formatError('Failed to clear session. Please try again.'), { parse_mode: 'MarkdownV2' });
       console.error('Error clearing session:', error);
@@ -274,11 +285,11 @@ export class CommandHandler {
       const sessions = await this.sessionReader.listProjectSessions(user.activeProject, 10);
 
       if (sessions.length === 0) {
-        await ctx.reply('📋 No Claude Code sessions found for this project.\n\nStart chatting to create a new session!');
+        await ctx.reply('📋 No AI coding agent sessions found for this project.\n\nStart chatting to create a new session!');
         return;
       }
 
-      const listText = `📋 Claude Code Sessions (${sessions.length})\n\nSelect a session to resume:`;
+      const listText = `📋 Agent Sessions (${sessions.length})\n\nSelect a session to resume:`;
       await ctx.reply(listText, KeyboardFactory.createSessionListKeyboard(sessions));
     } catch (error) {
       await ctx.reply(this.formatter.formatError('Failed to load sessions. Please try again.'), { parse_mode: 'MarkdownV2' });
@@ -293,7 +304,7 @@ export class CommandHandler {
     const user = await this.getOrCreateUser(chatId);
 
     try {
-      const success = await this.claudeSDK.abortQuery(chatId);
+      const success = await this.agentManager.abortQuery(chatId);
 
       if (success) {
         await ctx.reply('🛑 Query aborted successfully. You can send a new message now.');
@@ -353,13 +364,13 @@ export class CommandHandler {
     }
 
     try {
-      // Check if Claude is currently running and abort if needed
+      // Check if Agent is currently running and abort if needed
       let abortMessage = '';
-      if (this.claudeSDK.isQueryRunning(chatId)) {
-        const abortSuccess = await this.claudeSDK.abortQuery(chatId);
+      if (this.agentManager.isQueryRunning(chatId)) {
+        const abortSuccess = await this.agentManager.abortQuery(chatId);
         
         if (abortSuccess) {
-          abortMessage = '🛑 Current Claude has been stopped.\n';
+          abortMessage = '🛑 Current agent query has been stopped.\n';
         }
       }
 
@@ -369,20 +380,20 @@ export class CommandHandler {
       const modeNames = {
         [PermissionMode.Default]: 'Default - Standard behavior with permission prompts for each tool on first use',
         [PermissionMode.AcceptEdits]: 'Accept Edits - Automatically accept file edit permissions for the session',
-        [PermissionMode.Plan]: 'Plan - Claude can analyze but cannot modify files or execute commands',
+        [PermissionMode.Plan]: 'Plan - the agent can analyze but cannot modify files or execute commands',
         [PermissionMode.BypassPermissions]: 'Bypass Permissions - Skip all permission prompts (requires secure environment)'
       };
 
       const modeName = modeNames[mode];
       const finalMessage = abortMessage 
-        ? `${abortMessage}✅ Permission mode changed to: \n**${modeName}**\n🔄 Claude session is resuming with the new permission mode.`
+        ? `${abortMessage}✅ Permission mode changed to: \n**${modeName}**\n🔄 Agent session is resuming with the new permission mode.`
         : `✅ Permission mode changed to: \n**${modeName}**\nThe new permission mode is now active.`;
 
       await this.telegramSender.safeSendMessage(ctx.chat.id, finalMessage);
       
-      // If we aborted a query, send a continue message to restart Claude session
+      // If we aborted a query, send a continue message to restart Agent session
       if (abortMessage) {
-        this.claudeSDK.addMessageToStream(chatId, 'continue');
+        this.agentManager.addMessageToStream(chatId, 'continue');
       }
     } catch (error) {
       await ctx.reply(this.formatter.formatError('Failed to change permission mode. Please try again.'), { parse_mode: 'MarkdownV2' });
@@ -402,13 +413,16 @@ export class CommandHandler {
 
     if (modelArg) {
       // Try to find matching model
-      const matchedModel = AVAILABLE_MODELS.find(
-        m => m.displayName.toLowerCase().includes(modelArg) ||
-             m.value.toLowerCase().includes(modelArg)
+      const models = await this.getSelectableModels();
+      const matchedModel = models.find(
+        (m) =>
+          `${m.provider} - ${m.displayName}`.toLowerCase().includes(modelArg) ||
+          m.displayName.toLowerCase().includes(modelArg) ||
+          m.value.toLowerCase().includes(modelArg)
       );
 
       if (matchedModel) {
-        await this.handleModelChange(ctx, matchedModel.value);
+        await this.handleModelChange(ctx, matchedModel.value, matchedModel.provider);
         return;
       } else {
         await ctx.reply(this.formatter.formatError(`Unknown model: "${modelArg}". Use /model to see available options.`), { parse_mode: 'MarkdownV2' });
@@ -417,39 +431,73 @@ export class CommandHandler {
     }
 
     // Show current model and selection keyboard
-    const currentModel = AVAILABLE_MODELS.find(m => m.value === user.currentModel);
+    const models = await this.getSelectableModels();
+    const currentProvider = this.agentManager.provider;
+    const resolvedModel = resolveModelForProvider(currentProvider, user.currentModel);
+    if (resolvedModel !== user.currentModel) {
+      user.setModel(resolvedModel);
+      await this.storage.saveUserSession(user);
+    }
+    const currentModel = models.find((m) => m.provider === currentProvider && m.value === resolvedModel);
     const currentModelName = currentModel?.displayName || user.currentModel;
 
-    const text = `🤖 Current model: **${currentModelName}**\n\nSelect a model:`;
-    await this.telegramSender.safeSendMessage(chatId, text, KeyboardFactory.createModelSelectionKeyboard(user.currentModel));
+    const text = `🤖 Current model: **${currentProvider} - ${currentModelName}**\n\nSelect a model:`;
+    await this.telegramSender.safeSendMessage(
+      chatId,
+      text,
+      KeyboardFactory.createModelSelectionKeyboard(resolvedModel, currentProvider, models)
+    );
   }
 
-  async handleModelChange(ctx: Context, model: ClaudeModel): Promise<void> {
+  async handleModelChange(ctx: Context, model: AgentModel, targetProvider?: 'claude' | 'codex'): Promise<void> {
     if (!ctx.chat) return;
 
     const chatId = ctx.chat.id;
     const user = await this.getOrCreateUser(chatId);
+    const availableModels = await this.getSelectableModels();
+    const modelInfo = targetProvider
+      ? availableModels.find((m) => m.provider === targetProvider && m.value === model)
+      : availableModels.find((m) => m.value === model);
+
+    if (!modelInfo) {
+      await ctx.reply(this.formatter.formatError('Invalid model selected.'), { parse_mode: 'MarkdownV2' });
+      return;
+    }
 
     try {
-      // Check if Claude is currently running and abort if needed
+      // Check if Agent is currently running and abort if needed
       let abortMessage = '';
-      if (this.claudeSDK.isQueryRunning(chatId)) {
-        const abortSuccess = await this.claudeSDK.abortQuery(chatId);
+      if (this.agentManager.isQueryRunning(chatId)) {
+        const abortSuccess = await this.agentManager.abortQuery(chatId);
         if (abortSuccess) {
           abortMessage = '🛑 Current query has been stopped.\n';
         }
       }
 
-      // Update model without clearing session
-      user.setModel(model);
+      const currentProvider = this.agentManager.provider;
+      const providerChanged = currentProvider !== modelInfo.provider;
+      if (providerChanged) {
+        if (!this.agentManager.setProvider) {
+          await ctx.reply(this.formatter.formatError('Provider switching is not supported in this runtime.'), { parse_mode: 'MarkdownV2' });
+          return;
+        }
+        await this.agentManager.setProvider(modelInfo.provider);
+        this.config.agent.provider = modelInfo.provider;
+        // Provider sessions are not cross-compatible.
+        delete user.sessionId;
+      }
+
+      user.setModel(modelInfo.value);
       await this.storage.saveUserSession(user);
 
-      const modelInfo = AVAILABLE_MODELS.find(m => m.value === model);
-      const modelName = modelInfo?.displayName || model;
+      const selectedModelName = modelInfo.displayName || modelInfo.value;
+      const details = providerChanged
+        ? `✅ Model switched to **${modelInfo.provider} - ${selectedModelName}**\n🧹 Session reset because provider changed.`
+        : `✅ Model switched to **${modelInfo.provider} - ${selectedModelName}**`;
 
       const finalMessage = abortMessage
-        ? `${abortMessage}✅ Model switched to **${modelName}**\n🔄 Continue your conversation with the new model.`
-        : `✅ Model switched to **${modelName}**`;
+        ? `${abortMessage}${details}\n🔄 Continue your conversation with the new model.`
+        : details;
 
       await this.telegramSender.safeSendMessage(chatId, finalMessage);
     } catch (error) {
@@ -589,6 +637,16 @@ export class CommandHandler {
         });
       });
     });
+  }
+
+  private async getSelectableModels(): Promise<ModelInfo[]> {
+    await this.agentManager.getAvailableModels();
+    const models = getAllProviderModels();
+    const unique = new Map<string, ModelInfo>();
+    for (const model of models) {
+      unique.set(`${model.provider}:${model.value}`, model);
+    }
+    return Array.from(unique.values());
   }
 
   async getOrCreateUser(chatId: number): Promise<UserSessionModel> {

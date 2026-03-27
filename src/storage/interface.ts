@@ -22,9 +22,9 @@ export interface IStorage {
   deleteUserSession(chatId: number): Promise<void>;
   updateSessionActivity(userSession: UserSessionModel): Promise<void>;
 
-  // Claude session management
-  startClaudeSession(userSession: UserSessionModel, sessionId: string, projectPath?: string): Promise<void>;
-  endClaudeSession(userSession: UserSessionModel): Promise<void>;
+  // Agent session management
+  startAgentSession(userSession: UserSessionModel, sessionId: string, projectPath?: string): Promise<void>;
+  endAgentSession(userSession: UserSessionModel): Promise<void>;
 
 
   // Tool use storage for message handling

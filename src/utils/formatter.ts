@@ -1,8 +1,8 @@
-import { type SDKMessage, type SDKAssistantMessage, type SDKUserMessage, type SDKResultMessage, type SDKSystemMessage } from '@anthropic-ai/claude-agent-sdk';
 import { markdownv2 as format } from 'telegram-format';
 import { createPatch } from 'diff';
 import { TargetTool, PermissionMode } from '../models/types';
 import fs from 'node:fs/promises';
+import { type AgentMessage, type AgentAssistantMessage, type AgentUserMessage, type AgentResultMessage, type AgentSystemMessage } from '../models/agent-message';
 
 type Edit = { old_string: string; new_string: string; replace_all?: boolean };
 
@@ -24,7 +24,7 @@ export class MessageFormatter {
     return `ℹ️ ${format.bold('Info')}: ${format.escape(message)}`;
   }
 
-  async formatClaudeMessage(message: SDKMessage, permissionMode?: PermissionMode): Promise<string> {
+  async formatAgentMessage(message: AgentMessage, permissionMode?: PermissionMode): Promise<string> {
     // Format based on SDK message type
     switch (message.type) {
       case 'assistant':
@@ -34,7 +34,7 @@ export class MessageFormatter {
       case 'result':
         return this.formatResultMessage(message);
       case 'system':
-        return this.formatSystemMessage(message as SDKSystemMessage);
+        return this.formatSystemMessage(message as AgentSystemMessage);
       // New message types added in claude-agent-sdk
       case 'stream_event':
       case 'tool_progress':
@@ -45,7 +45,7 @@ export class MessageFormatter {
     }
   }
 
-  private async formatAssistantMessage(message: SDKAssistantMessage, permissionMode?: PermissionMode): Promise<string> {
+  private async formatAssistantMessage(message: AgentAssistantMessage, permissionMode?: PermissionMode): Promise<string> {
     let result = '🤖 ';
 
     if (message.message.model) {
@@ -65,7 +65,8 @@ export class MessageFormatter {
         ? message.message.content
         : [message.message.content];
 
-      for (const block of contentBlocks) {
+      for (const rawBlock of contentBlocks) {
+        const block = rawBlock as any;
         if (typeof block === 'string') {
           result += `${block}\n`;
         } else {
@@ -123,7 +124,7 @@ export class MessageFormatter {
     return result.trim();
   }
 
-  private async formatUserMessage(message: SDKUserMessage): Promise<string> {
+  private async formatUserMessage(message: AgentUserMessage): Promise<string> {
     let result = '';
 
     // Handle content blocks
@@ -132,7 +133,8 @@ export class MessageFormatter {
         ? message.message.content
         : [message.message.content];
 
-      for (const block of contentBlocks) {
+      for (const rawBlock of contentBlocks) {
+        const block = rawBlock as any;
         if (typeof block === 'string') {
           result += `${block}\n`;
         } else {
@@ -201,7 +203,7 @@ export class MessageFormatter {
     return result.trim();
   }
 
-  private formatResultMessage(message: SDKResultMessage): string {
+  private formatResultMessage(message: AgentResultMessage): string {
     if (message.subtype === 'success') {
       return `✅ **Execution completed** (${Math.round(message.duration_ms / 1000)}s)`;
     } else {
@@ -209,14 +211,14 @@ export class MessageFormatter {
     }
   }
 
-  private formatSystemMessage(message: SDKSystemMessage): string {
+  private formatSystemMessage(message: AgentSystemMessage): string {
     if (message.subtype === 'init') {
       return `🚀 **System initialization**\n Model: ${message.model}`;
     }
     return '';
   }
 
-  private formatGenericMessage(message: SDKMessage): string {
+  private formatGenericMessage(message: AgentMessage): string {
     return format.monospaceBlock(JSON.stringify(message, null, 2), 'json');
   }
 

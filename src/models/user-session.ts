@@ -1,4 +1,4 @@
-import { UserState, PermissionMode, FileBrowsingState, ClaudeModel, DEFAULT_MODEL } from './types';
+import { UserState, PermissionMode, FileBrowsingState, AgentModel, DEFAULT_MODEL } from './types';
 import { isOnboardingCompleted, markOnboardingCompleted, resetOnboardingStatus } from '../services/onboarding-store';
 
 export interface UserSession {
@@ -12,7 +12,7 @@ export interface UserSession {
   // Project management
   activeProject: string;
   
-  // Claude session management
+  // Agent session management
   sessionId?: string;
   projectPath: string;
   active: boolean;
@@ -27,7 +27,8 @@ export interface UserSession {
   authenticated: boolean;
 
   // Model selection
-  currentModel: ClaudeModel;
+  currentModel: AgentModel;
+  hasSelectedModel: boolean;
 }
 
 export class UserSessionModel {
@@ -41,7 +42,8 @@ export class UserSessionModel {
   permissionMode: PermissionMode;
   fileBrowsingState?: FileBrowsingState;
   authenticated: boolean;
-  currentModel: ClaudeModel;
+  currentModel: AgentModel;
+  hasSelectedModel: boolean;
 
   constructor(chatId: number) {
     this.chatId = chatId;
@@ -53,6 +55,7 @@ export class UserSessionModel {
     this.permissionMode = PermissionMode.Default;
     this.authenticated = false;
     this.currentModel = DEFAULT_MODEL;
+    this.hasSelectedModel = false;
   }
 
   setActive(active: boolean): void {
@@ -83,7 +86,7 @@ export class UserSessionModel {
     this.updateActivity();
   }
 
-  // Claude session methods
+  // Agent session methods
   startSession(sessionId: string, projectPath?: string): void {
     this.sessionId = sessionId;
     this.active = true;
@@ -125,12 +128,13 @@ export class UserSessionModel {
   }
 
   // Model selection methods
-  setModel(model: ClaudeModel): void {
+  setModel(model: AgentModel): void {
     this.currentModel = model;
+    this.hasSelectedModel = true;
     this.updateActivity();
   }
 
-  getModel(): ClaudeModel {
+  getModel(): AgentModel {
     return this.currentModel;
   }
 
@@ -175,7 +179,8 @@ export class UserSessionModel {
       permissionMode: this.permissionMode,
       fileBrowsingState: this.fileBrowsingState,
       authenticated: this.authenticated,
-      currentModel: this.currentModel
+      currentModel: this.currentModel,
+      hasSelectedModel: this.hasSelectedModel
     };
   }
 
@@ -185,11 +190,10 @@ export class UserSessionModel {
     userSession.lastActivity = new Date(data.lastActivity);
 
     userSession.activeProject = data.activeProject || '';
-    if (data.sessionId) {
-      userSession.sessionId = data.sessionId;
-    }
+    // Do not restore provider session IDs across gateway restarts.
+    // They can become stale and cause immediate provider-side resume errors.
     userSession.projectPath = data.projectPath || '';
-    userSession.active = data.active || false;
+    userSession.active = !!(userSession.activeProject && userSession.projectPath);
     userSession.permissionMode = data.permissionMode || PermissionMode.Default;
     userSession.fileBrowsingState = data.fileBrowsingState;
     userSession.authenticated = data.authenticated || false;
@@ -200,6 +204,8 @@ export class UserSessionModel {
       userSession.active = true;
     }
     userSession.currentModel = data.currentModel || DEFAULT_MODEL;
+    // Force explicit model selection after each gateway restart.
+    userSession.hasSelectedModel = false;
 
     return userSession;
   }

@@ -41,7 +41,7 @@ export class ProjectHandler {
 
       const tempProjectId = TelegramUtils.generateProjectId();
       const localPath = await this.github.cloneRepo(repoUrl, user.chatId, tempProjectId);
-      // Use encoded path as project ID (same format as Claude Code)
+      // Use encoded path as project ID (same format as AI coding agent)
       const projectId = localPath.replace(/\//g, '-');
 
       const project = createProject(
@@ -100,7 +100,7 @@ export class ProjectHandler {
 
       await ctx.reply(confirmText);
 
-      // Use encoded path as project ID (same format as Claude Code)
+      // Use encoded path as project ID (same format as AI coding agent)
       const projectId = resolvedPath.replace(/\//g, '-');
 
       const project = createProject(

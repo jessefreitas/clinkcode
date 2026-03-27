@@ -35,7 +35,7 @@ export class PermissionManager {
   }
 
   /**
-   * Main permission check method for use by Claude Code SDK
+   * Main permission check method for use by AI coding agent SDK
    */
   async canUseTool(toolName: string, input: Record<string, unknown>): Promise<PermissionResult> {
     // Extract chatId from input, this needs to be passed when calling

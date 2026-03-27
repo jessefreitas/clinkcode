@@ -1,14 +1,14 @@
 // Text templates for Telegram bot messages
 export const MESSAGES = {
   // Welcome message
-  WELCOME_TEXT: `🚀 Welcome to Claude Code Bot!
+  WELCOME_TEXT: `🚀 Welcome to AI coding agent Bot!
 
-This bot helps you interact with Claude Code through Telegram.
+This bot helps you interact with AI coding agent through Telegram.
 
 Main features:
 • Create and manage multiple projects
 • Connect with GitHub repositories
-• Use Claude Code in Telegram
+• Use AI coding agent in Telegram
 • Full keyboard interaction support
 
 Available commands:
@@ -21,7 +21,7 @@ Available commands:
 • /auth - Authenticate with secret (if required)
 • /abort - Abort current query
 • /clear - Clear session
-• /resume - Resume a previous Claude Code session
+• /resume - Resume a previous AI coding agent session
 
 🔧 **Permission Modes**
 • /default - Standard behavior with permission prompts
@@ -118,18 +118,18 @@ Project ID: ${projectId}
 ${repoSection}Project type: ${repoUrl ? 'GitHub repository' : 'Local directory'}
 Local path: ${localPath}
 ${sourceSection}
-Project is ready! You can now chat with Claude Code directly.`;
+Project is ready! You can now chat with the AI coding agent directly.`;
   },
 
   // Status messages
-  STATUS_TEXT: (userState: string, sessionStatus: string, projectCount: number, activeProjectName: string, activeProjectType: string, activeProjectPath: string, permissionMode: string, authStatus: string, hasClaudeSession: string) =>
+  STATUS_TEXT: (userState: string, sessionStatus: string, projectCount: number, activeProjectName: string, activeProjectType: string, activeProjectPath: string, permissionMode: string, authStatus: string, hasAgentSession: string) =>
     `📊 Current Status
 
 🔧 **System Status**
 User state: ${userState}
 Session status: ${sessionStatus}
 Authentication: ${authStatus}
-Claude session: ${hasClaudeSession}
+Agent session: ${hasAgentSession}
 
 📋 **Projects**
 Total projects: ${projectCount}
@@ -162,7 +162,7 @@ Permission mode: ${permissionMode}`,
 
 📁 *Tools*
 /ls — Browse project files
-/model — Change Claude model
+/model — Change model
 /status — View current status
 
 🔐 *Security*
@@ -170,7 +170,7 @@ Permission mode: ${permissionMode}`,
 
 *Getting Started:*
 1. Select a project with /listproject
-2. Send messages to chat with Claude Code
+2. Send messages to chat with the AI coding agent
 3. Use /diff to review changes`,
 
   // Progress messages
@@ -210,11 +210,11 @@ Permission mode: ${permissionMode}`,
   ONBOARDING: {
     WELCOME: `🚀 *Welcome to Clink Code!*
 
-Clink Code is your Telegram gateway to Claude Code — powerful AI-assisted coding directly from Telegram.
+Clink Code is your Telegram gateway to AI coding agent — powerful AI-assisted coding directly from Telegram.
 
 *What you can do:*
 • Create projects from GitHub repos or local directories
-• Chat with Claude to analyze, edit, and create code
+• Chat with the AI coding agent to analyze, edit, and create code
 • Use voice messages and images as input
 • Manage multiple projects and sessions
 
@@ -224,9 +224,9 @@ Let's get you set up!`,
 
 Before using Clink Code, please understand:
 
-• Claude Code can *read, edit, and execute* code in your projects
+• AI coding agent can *read, edit, and execute* code in your projects
 • Always *review changes* before approving them
-• Use *permission modes* to control Claude's capabilities
+• Use *permission modes* to control the agent's capabilities
 • Never share sensitive credentials in conversations
 • You are responsible for all code changes made
 
@@ -234,7 +234,7 @@ By continuing, you acknowledge and accept these terms.`,
 
     MODEL_SELECTION: `🤖 *Choose Your Default Model*
 
-Select the Claude model you'd like to use:
+Select the model you'd like to use:
 
 *Opus 4.5* — Most capable, best for complex tasks
 *Sonnet 4.5* — Balanced performance and speed
@@ -258,7 +258,7 @@ You're ready to use Clink Code.
 *Quick Start:*
 • /createproject — Create a new project
 • /listproject — Browse existing projects
-• /model — Change Claude model
+• /model — Change model
 • /help — View all commands
 
 Start by creating or selecting a project!`,

@@ -1,16 +1,17 @@
 import { Context, Telegraf } from 'telegraf';
 import { UserSessionModel } from '../../../models/user-session';
-import { UserState, PermissionMode } from '../../../models/types';
+import { UserState, PermissionMode, getAllProviderModels } from '../../../models/types';
 import { IStorage } from '../../../storage/interface';
 import { GitHubManager } from '../../github';
 import { MessageFormatter } from '../../../utils/formatter';
 import { MESSAGES } from '../../../constants/messages';
-import { ClaudeManager } from '../../claude';
 import { ProjectHandler } from '../project/project-handler';
 import { FileBrowserHandler } from '../file-browser/file-browser-handler';
 import { TelegramSender } from '../../../services/telegram-sender';
 import { KeyboardFactory } from '../keyboards/keyboard-factory';
 import { Config } from '../../../config/config';
+import { IAgentManager } from '../../agent-manager';
+import { AgentMessage } from '../../../models/agent-message';
 
 export class MessageHandler {
   private telegramSender: TelegramSender;
@@ -19,7 +20,7 @@ export class MessageHandler {
     private storage: IStorage,
     private github: GitHubManager,
     private formatter: MessageFormatter,
-    private claudeSDK: ClaudeManager,
+    private agentManager: IAgentManager,
     private projectHandler: ProjectHandler,
     private bot: Telegraf,
     private config: Config,
@@ -57,6 +58,13 @@ export class MessageHandler {
         await this.handleASREditInput(ctx, user, text);
         break;
       case UserState.InSession:
+        if (!user.hasSelectedModel) {
+          await ctx.reply(
+            'Please choose a model first before sending prompts:',
+            KeyboardFactory.createModelSelectionKeyboard(user.currentModel, this.agentManager.provider, getAllProviderModels())
+          );
+          break;
+        }
         await this.handleSessionInput(ctx, user, text);
         break;
       default:
@@ -71,7 +79,7 @@ export class MessageHandler {
   async handleSessionInput(ctx: Context, user: UserSessionModel, text: string): Promise<void> {
     try {
       await ctx.reply('Processing...', KeyboardFactory.createCompletionKeyboard());
-      await this.claudeSDK.addMessageToStream(user.chatId, text);
+      await this.agentManager.addMessageToStream(user.chatId, text);
     } catch (error) {
       await ctx.reply(this.formatter.formatError(MESSAGES.ERRORS.SEND_INPUT_FAILED(error instanceof Error ? error.message : 'Unknown error')), { parse_mode: 'MarkdownV2' });
     }
@@ -102,7 +110,7 @@ export class MessageHandler {
       const caption = 'caption' in ctx.message ? (ctx.message.caption as string) : undefined;
 
       await ctx.reply('Processing image...', KeyboardFactory.createCompletionKeyboard());
-      await this.claudeSDK.addImageMessageToStream(chatId, base64Data, 'image/jpeg', caption);
+      await this.agentManager.addImageMessageToStream(chatId, base64Data, 'image/jpeg', caption);
     } catch (error) {
       await ctx.reply(this.formatter.formatError('Failed to process image. Please try again.'), { parse_mode: 'MarkdownV2' });
       console.error('Error processing photo:', error);
@@ -168,25 +176,25 @@ export class MessageHandler {
       await this.storage.saveUserSession(user);
 
       await ctx.reply('Processing...', KeyboardFactory.createCompletionKeyboard());
-      await this.claudeSDK.addMessageToStream(user.chatId, text);
+      await this.agentManager.addMessageToStream(user.chatId, text);
     } catch (error) {
       await ctx.reply(this.formatter.formatError(MESSAGES.ERRORS.SEND_INPUT_FAILED(error instanceof Error ? error.message : 'Unknown error')), { parse_mode: 'MarkdownV2' });
     }
   }
 
-  async handleRegularMessage(chatId: number, message: any, permissionMode?: PermissionMode): Promise<void> {
+  async handleRegularMessage(chatId: number, message: AgentMessage, permissionMode?: PermissionMode): Promise<void> {
     await this.sendFormattedMessage(chatId, message, permissionMode);
   }
 
 
-  async sendFormattedMessage(chatId: number, message: any, permissionMode?: PermissionMode): Promise<void> {
+  async sendFormattedMessage(chatId: number, message: AgentMessage, permissionMode?: PermissionMode): Promise<void> {
     try {
-      const formattedMessage = await this.formatter.formatClaudeMessage(message, permissionMode);
+      const formattedMessage = await this.formatter.formatAgentMessage(message, permissionMode);
       if (formattedMessage) {
         await this.telegramSender.safeSendMessage(chatId, formattedMessage);
       }
     } catch (error) {
-      console.error('Error handling Claude message:', error);
+      console.error('Error handling Agent message:', error);
     }
   }
 

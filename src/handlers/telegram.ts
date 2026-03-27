@@ -3,11 +3,12 @@ import { PermissionMode } from '../models/types';
 import { IStorage } from '../storage/interface';
 import { GitHubManager } from './github';
 import { DirectoryManager } from './directory';
-import { ClaudeManager } from './claude';
 import { MessageFormatter } from '../utils/formatter';
 import { message } from 'telegraf/filters';
 import { Config } from '../config/config';
 import { PermissionManager } from './permission-manager';
+import { AgentMessage } from '../models/agent-message';
+import { AgentToolInfo, IAgentManager } from './agent-manager';
 
 // Import handlers
 import { CommandHandler } from './telegram/commands/command-handler';
@@ -22,7 +23,7 @@ export class TelegramHandler {
   private github: GitHubManager;
   private directory: DirectoryManager;
   private storage: IStorage;
-  private claudeSDK: ClaudeManager;
+  private agentManager: IAgentManager;
   private formatter: MessageFormatter;
   private config: Config;
   private permissionManager: PermissionManager;
@@ -39,7 +40,7 @@ export class TelegramHandler {
     bot: Telegraf,
     github: GitHubManager,
     directory: DirectoryManager,
-    claudeSDK: ClaudeManager,
+    agentManager: IAgentManager,
     storage: IStorage,
     formatter: MessageFormatter,
     config: Config,
@@ -49,24 +50,24 @@ export class TelegramHandler {
     this.github = github;
     this.directory = directory;
     this.storage = storage;
-    this.claudeSDK = claudeSDK;
+    this.agentManager = agentManager;
     this.formatter = formatter;
     this.config = config;
     this.permissionManager = permissionManager;
 
     // Initialize handlers
-    this.commandHandler = new CommandHandler(this.storage, this.formatter, this.claudeSDK, this.config, this.bot);
+    this.commandHandler = new CommandHandler(this.storage, this.formatter, this.agentManager, this.config, this.bot);
     this.projectHandler = new ProjectHandler(this.storage, this.github, this.directory, this.formatter, this.bot);
-    this.toolHandler = new ToolHandler(this.storage, this.formatter, this.config, this.bot, this.claudeSDK);
+    this.toolHandler = new ToolHandler(this.storage, this.formatter, this.config, this.bot, this.agentManager);
     this.fileBrowserHandler = new FileBrowserHandler(this.storage, this.directory, this.formatter, this.config, this.bot);
-    this.messageHandler = new MessageHandler(this.storage, this.github, this.formatter, this.claudeSDK, this.projectHandler, this.bot, this.config, this.fileBrowserHandler);
-    this.callbackHandler = new CallbackHandler(this.formatter, this.projectHandler, this.storage, this.fileBrowserHandler, this.bot, this.permissionManager, this.claudeSDK);
+    this.messageHandler = new MessageHandler(this.storage, this.github, this.formatter, this.agentManager, this.projectHandler, this.bot, this.config, this.fileBrowserHandler);
+    this.callbackHandler = new CallbackHandler(this.formatter, this.projectHandler, this.storage, this.fileBrowserHandler, this.bot, this.permissionManager, this.agentManager, this.config);
 
 
     this.setupHandlers();
   }
 
-  public async handleClaudeResponse(userId: string, message: any, toolInfo?: { toolId: string; toolName: string; isToolUse: boolean; isToolResult: boolean }, parentToolUseId?: string): Promise<void> {
+  public async handleAgentResponse(userId: string, message: AgentMessage | null, toolInfo?: AgentToolInfo, parentToolUseId?: string): Promise<void> {
     const chatId = parseInt(userId);
     if (isNaN(chatId)) return;
 
@@ -75,17 +76,17 @@ export class TelegramHandler {
       return;
     }
 
-    await this.handleClaudeMessage(chatId, message, toolInfo, parentToolUseId);
+    await this.handleAgentMessage(chatId, message, toolInfo, parentToolUseId);
   }
 
-  public async handleClaudeError(userId: string, error: string): Promise<void> {
+  public async handleAgentError(userId: string, error: string): Promise<void> {
     const chatId = parseInt(userId);
     if (isNaN(chatId)) return;
 
     try {
       await this.bot.telegram.sendMessage(
         chatId,
-        this.formatter.formatError(`Claude Error: ${error}`),
+        this.formatter.formatError(`Agent Error: ${error}`),
         { parse_mode: 'MarkdownV2' }
       );
     } catch (error) {
@@ -137,7 +138,7 @@ export class TelegramHandler {
     this.bot.on('callback_query', (ctx) => this.callbackHandler.handleCallback(ctx));
   }
 
-  public async handleClaudeMessage(chatId: number, message: any, toolInfo?: { toolId: string; toolName: string; isToolUse: boolean; isToolResult: boolean }, parentToolUseId?: string): Promise<void> {
+  public async handleAgentMessage(chatId: number, message: AgentMessage, toolInfo?: AgentToolInfo, parentToolUseId?: string): Promise<void> {
     const user = await this.storage.getUserSession(chatId);
     if (!user || !user.sessionId) return;
 

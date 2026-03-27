@@ -1,18 +1,17 @@
-import { type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { AsyncQueue } from './async-queue';
 
-interface StreamInfo {
+interface StreamInfo<T> {
   controller: AbortController;
-  messageQueue: AsyncQueue<SDKUserMessage>;
+  messageQueue: AsyncQueue<T>;
 }
 
-export class StreamManager {
-  private streams = new Map<number, StreamInfo>();
+export class StreamManager<T> {
+  private streams = new Map<number, StreamInfo<T>>();
 
-  getOrCreateStream(chatId: number): AsyncIterable<SDKUserMessage> {
+  getOrCreateStream(chatId: number): AsyncIterable<T> {
     if (!this.streams.has(chatId)) {
       const controller = new AbortController();
-      const messageQueue = new AsyncQueue<SDKUserMessage>();
+      const messageQueue = new AsyncQueue<T>();
       
       this.streams.set(chatId, {
         controller,
@@ -24,7 +23,7 @@ export class StreamManager {
     return this.createPersistentIterable(chatId, streamInfo.messageQueue, streamInfo.controller);
   }
 
-  addMessage(chatId: number, message: SDKUserMessage): void {
+  addMessage(chatId: number, message: T): void {
     const stream = this.streams.get(chatId);
     if (stream && !stream.controller.signal.aborted && !stream.messageQueue.isClosed) {
       stream.messageQueue.enqueue(message);
@@ -85,9 +84,9 @@ export class StreamManager {
 
   private async* createPersistentIterable(
     chatId: number, 
-    queue: AsyncQueue<SDKUserMessage>, 
+    queue: AsyncQueue<T>, 
     controller: AbortController
-  ): AsyncIterable<SDKUserMessage> {
+  ): AsyncIterable<T> {
     try {
       while (!controller.signal.aborted) {
         try {

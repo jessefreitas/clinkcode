@@ -1,8 +1,8 @@
 import { Markup } from 'telegraf';
 import { MESSAGES } from '../../../constants/messages';
 import { Project } from '../../../models/project';
-import { ClaudeSession, ClaudeProject } from '../../../utils/claude-session-reader';
-import { ClaudeModel, AVAILABLE_MODELS } from '../../../models/types';
+import { AgentSession, AgentProject } from '../../../utils/agent-session-reader';
+import { AgentModel, AgentProvider, getAllProviderModels, ModelInfo } from '../../../models/types';
 
 export class KeyboardFactory {
   static createProjectTypeKeyboard(): any {
@@ -135,7 +135,7 @@ export class KeyboardFactory {
     return Markup.inlineKeyboard(keyboard);
   }
 
-  static createClaudeProjectListKeyboard(projects: ClaudeProject[], showCreateButtons: boolean = true): any {
+  static createProjectCatalogKeyboard(projects: AgentProject[], showCreateButtons: boolean = true): any {
     const keyboard = [];
 
     // Add project buttons (1 per row)
@@ -151,7 +151,7 @@ export class KeyboardFactory {
         : project.name;
 
       // Truncate ID to fit Telegram's 64 byte limit
-      // "claude_project_" = 15 bytes, so max ID length is 49 bytes
+      // "project_catalog_" = 15 bytes, so max ID length is 49 bytes
       const shortId = project.id.length > 45
         ? project.id.substring(project.id.length - 45)
         : project.id;
@@ -159,7 +159,7 @@ export class KeyboardFactory {
       keyboard.push([
         Markup.button.callback(
           `📂 ${displayName} (${dateStr})`,
-          `claude_project_${shortId}`
+          `project_catalog_${shortId}`
         )
       ]);
     }
@@ -180,7 +180,7 @@ export class KeyboardFactory {
     return Markup.inlineKeyboard(keyboard);
   }
 
-  static createSessionListKeyboard(sessions: ClaudeSession[]): any {
+  static createSessionListKeyboard(sessions: AgentSession[]): any {
     const keyboard = [];
 
     // Add session buttons (1 per row due to long text)
@@ -215,14 +215,32 @@ export class KeyboardFactory {
     return Markup.inlineKeyboard(keyboard);
   }
 
-  static createModelSelectionKeyboard(currentModel: ClaudeModel): any {
-    const buttons = AVAILABLE_MODELS.map(model => {
-      const isSelected = model.value === currentModel;
-      const label = isSelected ? `${model.displayName} ✓` : model.displayName;
-      return Markup.button.callback(label, `model_select:${model.value}`);
-    });
+  static createModelSelectionKeyboard(currentModel: AgentModel, provider: AgentProvider, models: ModelInfo[]): any {
+    const rows = [];
+    for (let i = 0; i < models.length; i += 2) {
+      const row = [];
+      const first = models[i];
+      const second = models[i + 1];
 
-    return Markup.inlineKeyboard([buttons, [Markup.button.callback('❌ Cancel', 'cancel')]]);
+      if (first) {
+        const isSelected = first.value === currentModel && first.provider === provider;
+        const label = `${first.provider} - ${first.displayName}${isSelected ? ' ✓' : ''}`;
+        row.push(Markup.button.callback(label, `model_select:${first.provider}:${encodeURIComponent(first.value)}`));
+      }
+
+      if (second) {
+        const isSelected = second.value === currentModel && second.provider === provider;
+        const label = `${second.provider} - ${second.displayName}${isSelected ? ' ✓' : ''}`;
+        row.push(Markup.button.callback(label, `model_select:${second.provider}:${encodeURIComponent(second.value)}`));
+      }
+
+      if (row.length > 0) {
+        rows.push(row);
+      }
+    }
+
+    rows.push([Markup.button.callback('❌ Cancel', 'cancel')]);
+    return Markup.inlineKeyboard(rows);
   }
 
   // Onboarding keyboards
@@ -241,10 +259,10 @@ export class KeyboardFactory {
     ]);
   }
 
-  static createOnboardingModelKeyboard(currentModel: ClaudeModel): any {
-    const buttons = AVAILABLE_MODELS.map(model => {
-      const isSelected = model.value === currentModel;
-      const label = isSelected ? `${model.displayName} ✓` : model.displayName;
+  static createOnboardingModelKeyboard(currentModel: AgentModel, hasSelectedModel: boolean): any {
+    const buttons = getAllProviderModels().map(model => {
+      const isSelected = hasSelectedModel && model.value === currentModel;
+      const label = `${model.provider} - ${model.displayName}${isSelected ? ' ✓' : ''}`;
       return Markup.button.callback(label, `onboarding_model:${model.value}`);
     });
 

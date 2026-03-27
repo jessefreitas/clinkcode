@@ -38,11 +38,11 @@ export class MessageBatcher {
     }
     this.buffers.set(chatId, []);    // Atomic clear
 
-    // 2-b Call Claude
+    // 2-b Call Agent
     try {
       await this.sendMessageCallback(chatId, msgs.join('\n'));
     } catch (err) {
-      console.error('[MessageBatcher] Claude call failed', err);
+      console.error('[MessageBatcher] Agent call failed', err);
     }
 
     // 2-c Check if new messages accumulated in buffer

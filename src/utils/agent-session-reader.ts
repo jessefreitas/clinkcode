@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as readline from 'readline';
 
-export interface ClaudeSession {
+export interface AgentSession {
   sessionId: string;
   cwd: string;
   timestamp: string;
@@ -12,7 +12,7 @@ export interface ClaudeSession {
   messageCount: number;
 }
 
-export interface ClaudeProject {
+export interface AgentProject {
   id: string;
   name: string;
   path: string;
@@ -20,7 +20,7 @@ export interface ClaudeProject {
   sessionCount: number;
 }
 
-export class ClaudeSessionReader {
+export class AgentSessionReader {
   private projectsDir: string;
 
   constructor() {
@@ -39,7 +39,7 @@ export class ClaudeSessionReader {
   /**
    * Read session info from a jsonl file
    */
-  private async readSessionInfo(filePath: string): Promise<ClaudeSession | null> {
+  private async readSessionInfo(filePath: string): Promise<AgentSession | null> {
     try {
       const fileStream = fs.createReadStream(filePath);
       const rl = readline.createInterface({
@@ -103,7 +103,7 @@ export class ClaudeSessionReader {
   /**
    * List all sessions for a specific project (by encoded project ID / directory name)
    */
-  async listProjectSessions(encodedProjectId: string, limit: number = 10): Promise<ClaudeSession[]> {
+  async listProjectSessions(encodedProjectId: string, limit: number = 10): Promise<AgentSession[]> {
     const sessionsDir = path.join(this.projectsDir, encodedProjectId);
 
     if (!fs.existsSync(sessionsDir)) {
@@ -125,7 +125,7 @@ export class ClaudeSessionReader {
       fileStats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 
       // Read session info for the most recent files
-      const sessions: ClaudeSession[] = [];
+      const sessions: AgentSession[] = [];
       for (const file of fileStats.slice(0, limit)) {
         const sessionInfo = await this.readSessionInfo(file.path);
         if (sessionInfo) {
@@ -143,7 +143,7 @@ export class ClaudeSessionReader {
   /**
    * Format session for display
    */
-  formatSessionDisplay(session: ClaudeSession, index: number): string {
+  formatSessionDisplay(session: AgentSession, index: number): string {
     const date = new Date(session.timestamp);
     const dateStr = date.toLocaleDateString('en-US', {
       month: 'short',
@@ -188,9 +188,9 @@ export class ClaudeSessionReader {
   }
 
   /**
-   * List all Claude Code projects from ~/.claude/projects/
+   * List all projects from the local provider session catalog (~/.claude/projects by default).
    */
-  async listAllProjects(limit: number = 20): Promise<ClaudeProject[]> {
+  async listAllProjects(limit: number = 20): Promise<AgentProject[]> {
     if (!fs.existsSync(this.projectsDir)) {
       return [];
     }
@@ -200,7 +200,7 @@ export class ClaudeSessionReader {
         .filter(dirent => dirent.isDirectory())
         .map(dirent => dirent.name);
 
-      const projects: ClaudeProject[] = [];
+      const projects: AgentProject[] = [];
 
       for (const dir of dirs) {
         const dirPath = path.join(this.projectsDir, dir);
@@ -248,7 +248,7 @@ export class ClaudeSessionReader {
 
       return projects.slice(0, limit);
     } catch (error) {
-      console.error('Error listing Claude Code projects:', error);
+      console.error('Error listing provider session projects:', error);
       return [];
     }
   }
