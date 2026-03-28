@@ -717,7 +717,23 @@ function startGateway(): void {
   const logFd = require("fs").openSync(logPath, "a");
 
   const { spawn } = require("child_process");
-  const child = spawn("pnpm", ["run", "start"], {
+
+  // On macOS/Linux, wrap the gateway with sleep prevention
+  let cmd: string;
+  let cmdArgs: string[];
+  if (process.platform === "darwin") {
+    // caffeinate -di wraps the child process: assertions last while gateway runs
+    cmd = "caffeinate";
+    cmdArgs = ["-di", "pnpm", "run", "start"];
+  } else if (process.platform === "linux") {
+    cmd = "systemd-inhibit";
+    cmdArgs = ["--what=idle:sleep", "--who=surat", "--why=Telegram bot running", "pnpm", "run", "start"];
+  } else {
+    cmd = "pnpm";
+    cmdArgs = ["run", "start"];
+  }
+
+  const child = spawn(cmd, cmdArgs, {
     detached: true,
     stdio: ["ignore", logFd, logFd],
     env: envVars,

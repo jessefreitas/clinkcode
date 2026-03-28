@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawn, ChildProcess } from 'node:child_process';
 import { Telegraf } from 'telegraf';
 import { loadConfig, validateConfig } from './config/config';
 import { StorageFactory } from './storage/factory';
@@ -13,6 +14,45 @@ import { ExpressServer } from './server/express';
 import { MessageFormatter } from './utils/formatter';
 import { PermissionManager } from './handlers/permission-manager';
 import { IAgentManager } from './handlers/agent-manager';
+
+function spawnSleepInhibitor(): ChildProcess | undefined {
+  let command: string;
+  let args: string[];
+
+  switch (process.platform) {
+    case 'darwin':
+      // -d: prevent display sleep, -i: prevent idle sleep, -s: prevent system sleep (AC only)
+      command = 'caffeinate';
+      args = ['-dis'];
+      break;
+    case 'linux':
+      command = 'systemd-inhibit';
+      args = ['--what=idle:sleep', '--who=surat', '--why=Telegram bot running', 'sleep', 'infinity'];
+      break;
+    case 'win32':
+      // ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED = 0x80000041
+      command = 'powershell';
+      args = [
+        '-NoProfile', '-WindowStyle', 'Hidden', '-Command',
+        'Add-Type -TypeDefinition \'using System;using System.Runtime.InteropServices;public class S{[DllImport("kernel32.dll")]public static extern uint SetThreadExecutionState(uint f);}\';while($true){[S]::SetThreadExecutionState(0x80000041);Start-Sleep -Seconds 30}',
+      ];
+      break;
+    default:
+      console.warn(`Sleep prevention not supported on platform: ${process.platform}`);
+      return undefined;
+  }
+
+  const child = spawn(command, args, { stdio: 'ignore', detached: false });
+  child.on('error', (err) => console.warn('Could not enable sleep prevention:', err.message));
+  child.on('exit', (code, signal) => {
+    if (signal) {
+      console.log(`Sleep prevention stopped by signal: ${signal}`);
+    } else if (code !== null && code !== 0) {
+      console.warn(`Sleep prevention process exited with code ${code}`);
+    }
+  });
+  return child;
+}
 
 async function main(): Promise<void> {
   try {
@@ -132,6 +172,12 @@ async function main(): Promise<void> {
       console.log('Telegram bot is running in polling mode');
     }
 
+    // Prevent idle sleep (cross-platform)
+    const sleepInhibitor = spawnSleepInhibitor();
+    if (sleepInhibitor) {
+      console.log(`Sleep prevention enabled (pid: ${sleepInhibitor.pid}, platform: ${process.platform})`);
+    }
+
     // Check ASR service availability
     if (config.asr.enabled) {
       try {
@@ -147,8 +193,8 @@ async function main(): Promise<void> {
     }
 
     // Handle graceful shutdown (register after successful startup)
-    process.once('SIGINT', () => gracefulShutdown(bot, agentManager, storage));
-    process.once('SIGTERM', () => gracefulShutdown(bot, agentManager, storage));
+    process.once('SIGINT', () => gracefulShutdown(bot, agentManager, storage, sleepInhibitor));
+    process.once('SIGTERM', () => gracefulShutdown(bot, agentManager, storage, sleepInhibitor));
   } catch (error) {
     console.error('Failed to start application:', error);
     process.exit(1);
@@ -159,11 +205,17 @@ async function main(): Promise<void> {
 async function gracefulShutdown(
   bot: Telegraf,
   agentManager: IAgentManager,
-  storage: IStorage
+  storage: IStorage,
+  sleepInhibitor?: ChildProcess
 ): Promise<void> {
   console.log('Received shutdown signal, shutting down gracefully...');
 
   try {
+    if (sleepInhibitor && !sleepInhibitor.killed) {
+      sleepInhibitor.kill();
+      console.log('Sleep prevention disabled');
+    }
+
     // Stop the bot
     bot.stop('SIGINT');
 
