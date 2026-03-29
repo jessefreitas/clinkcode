@@ -135,6 +135,11 @@ export class TelegramHandler {
     // Voice message handler
     this.bot.on(message('voice'), (ctx) => this.messageHandler.handleVoiceMessage(ctx));
 
+    // Video message handlers
+    this.bot.on(message('video'), (ctx) => this.messageHandler.handleVideoMessage(ctx));
+    this.bot.on(message('animation'), (ctx) => this.messageHandler.handleVideoMessage(ctx));
+    this.bot.on(message('video_note'), (ctx) => this.messageHandler.handleVideoMessage(ctx));
+
     this.bot.on('callback_query', (ctx) => this.callbackHandler.handleCallback(ctx));
   }
 

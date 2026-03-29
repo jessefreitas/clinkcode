@@ -141,37 +141,22 @@ Project path: ${activeProjectPath}
 Permission mode: ${permissionMode}`,
 
   // Help text
-  HELP_TEXT: `📚 *Clink Code — Help*
+  HELP_TEXT: `⚡ *Clink Code — OmniForge*
 
-📋 *Projects*
-/listproject — Browse and create projects
-/createproject — Create a new project
-/exitproject — Exit current project
+📋 /listproject — Projetos
+📁 /createproject — Novo projeto  
+🚪 /exitproject — Sair do projeto
 
-💬 *Session*
-/resume — Resume a previous session
-/clear — Clear current session
-/abort — Abort current query
-/diff — View git diff of current project
+🔄 /resume — Retomar sessão
+🗑 /clear — Limpar sessão
+🛑 /abort — Abortar consulta
+📊 /diff — Ver diff do projeto
 
-🔧 *Permission Modes*
-/default — Standard with permission prompts
-/acceptedits — Auto-accept file edits
-/plan — Analysis only, no modifications
-/bypass — Skip all permission prompts
+🤖 /model — Trocar modelo
+📊 /status — Status atual
 
-📁 *Tools*
-/ls — Browse project files
-/model — Change model
-/status — View current status
-
-🔐 *Security*
-/auth — Authenticate with secret token
-
-*Getting Started:*
-1. Select a project with /listproject
-2. Send messages to chat with the AI coding agent
-3. Use /diff to review changes`,
+🔧 *Modos de permissão:*
+/default /acceptedits /plan /bypass`,
 
   // Progress messages
   CLONING_REPO: '⏳ Cloning repository...',
@@ -208,17 +193,17 @@ Permission mode: ${permissionMode}`,
 
   // Onboarding messages
   ONBOARDING: {
-    WELCOME: `🚀 *Welcome to Clink Code!*
+    WELCOME: `⚡ *Bem-vindo ao Clink Code — OmniForge*
 
-Clink Code is your Telegram gateway to AI coding agent — powerful AI-assisted coding directly from Telegram.
+Seu gateway Telegram para agentes de IA de código.
 
-*What you can do:*
-• Create projects from GitHub repos or local directories
-• Chat with the AI coding agent to analyze, edit, and create code
-• Use voice messages and images as input
-• Manage multiple projects and sessions
+*O que você pode fazer:*
+• Criar projetos de repos GitHub ou diretórios locais
+• Conversar com o agente de IA para analisar, editar e criar código
+• Enviar voz, imagens e vídeos como entrada
+• Gerenciar múltiplos projetos e sessões
 
-Let's get you set up!`,
+Vamos começar!`,
 
     DISCLAIMER: `⚠️ *Security Disclaimer*
 
@@ -232,15 +217,13 @@ Before using Clink Code, please understand:
 
 By continuing, you acknowledge and accept these terms.`,
 
-    MODEL_SELECTION: `🤖 *Choose Your Default Model*
+    MODEL_SELECTION: `🤖 *Escolha o Modelo*
 
-Select the model you'd like to use:
+*Sonnet 4.5* — Equilíbrio ideal (recomendado)
+*Opus 4.5* — Máxima capacidade
+*Haiku 4.5* — Ultra rápido
 
-*Opus 4.5* — Most capable, best for complex tasks
-*Sonnet 4.5* — Balanced performance and speed
-*Haiku 4.5* — Fastest, best for simple tasks
-
-You can change this anytime with /model.`,
+Troque a qualquer momento com /model.`,
 
     PROJECT_GUIDE: `📁 *Create Your First Project*
 

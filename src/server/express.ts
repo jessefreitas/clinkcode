@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { Telegraf } from 'telegraf';
 import { WebhookConfig } from '../config/config';
+import { dashboardRouter } from './dashboard';
 
 export class ExpressServer {
   private app: express.Application;
@@ -44,6 +45,8 @@ export class ExpressServer {
         status: 'running'
       });
     });
+
+    this.app.use('/dashboard', dashboardRouter);
 
     // 404 handler
     this.app.use('*', (_req: Request, res: Response) => {

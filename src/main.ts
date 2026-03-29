@@ -138,6 +138,14 @@ async function main(): Promise<void> {
       await expressServer.start();
     }
     
+    // Start Express server for polling mode too (dashboard, health check)
+    if (config.telegram.mode !== 'webhook') {
+      const expressServer = new ExpressServer(bot, 3001);
+      expressServer.setupRoutes();
+      await expressServer.start();
+      console.log('Express server started on port 3001 (polling mode)');
+    }
+
     // Start bot based on mode
     console.log(`Starting Telegram bot in ${config.telegram.mode} mode...`);
     
@@ -167,9 +175,22 @@ async function main(): Promise<void> {
     if (config.telegram.mode === 'webhook') {
       console.log('Telegram bot is running in webhook mode');
     } else {
-      // Use polling mode (default)
-      await bot.launch();
-      console.log('Telegram bot is running in polling mode');
+      // Use polling mode with retry on 409 (conflict from previous instance)
+      const launchWithRetry = async (attempt = 1): Promise<void> => {
+        try {
+          await bot.launch();
+          console.log('Telegram bot is running in polling mode');
+        } catch (err: any) {
+          if (err?.response?.error_code === 409 && attempt <= 10) {
+            const delay = attempt * 5000;
+            console.warn(`Telegram 409 conflict (attempt ${attempt}/10). Retrying in ${delay/1000}s...`);
+            await new Promise(r => setTimeout(r, delay));
+            return launchWithRetry(attempt + 1);
+          }
+          throw err;
+        }
+      };
+      launchWithRetry().catch(err => console.error('Failed to launch bot after retries:', err));
     }
 
     // Prevent idle sleep (cross-platform)

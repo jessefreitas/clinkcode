@@ -99,6 +99,8 @@ export interface FileBrowsingState {
 
 // Model types by provider
 export type ClaudeModel =
+  | 'claude-sonnet-4-6'
+  | 'claude-opus-4-6'
   | 'claude-sonnet-4-5-20250929'
   | 'claude-opus-4-5-20251101'
   | 'claude-haiku-4-5-20251001';
@@ -115,9 +117,11 @@ export interface ModelInfo {
 }
 
 const CLAUDE_MODELS: ModelInfo[] = [
-  { value: 'claude-sonnet-4-5-20250929', provider: 'claude', displayName: 'Sonnet 4.5', description: 'Balanced' },
-  { value: 'claude-opus-4-5-20251101', provider: 'claude', displayName: 'Opus 4.5', description: 'Most capable' },
-  { value: 'claude-haiku-4-5-20251001', provider: 'claude', displayName: 'Haiku 4.5', description: 'Fastest' },
+  { value: 'claude-sonnet-4-6', provider: 'claude', displayName: 'Sonnet 4.6', description: 'Recomendado' },
+  { value: 'claude-opus-4-6', provider: 'claude', displayName: 'Opus 4.6', description: 'Maximo' },
+  { value: 'claude-sonnet-4-5-20250929', provider: 'claude', displayName: 'Sonnet 4.5', description: 'Legado' },
+  { value: 'claude-opus-4-5-20251101', provider: 'claude', displayName: 'Opus 4.5', description: 'Legado' },
+  { value: 'claude-haiku-4-5-20251001', provider: 'claude', displayName: 'Haiku 4.5', description: 'Ultra rapido' },
 ];
 
 export const DEFAULT_CODEX_MODELS: ModelInfo[] = [
@@ -137,7 +141,7 @@ export const AVAILABLE_MODELS: ModelInfo[] = [...CLAUDE_MODELS, ...DEFAULT_CODEX
 export const DEFAULT_PROVIDER: AgentProvider = 'claude';
 
 export const DEFAULT_MODELS: Record<AgentProvider, AgentModel> = {
-  claude: 'claude-opus-4-5-20251101',
+  claude: 'claude-sonnet-4-6',
   codex: 'gpt-5.4',
 };
 

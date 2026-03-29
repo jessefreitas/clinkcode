@@ -70,8 +70,8 @@ export class MessageHandler {
       default:
         if (this.github.isGitHubURL(text)) {
           await this.projectHandler.startProjectCreation(ctx, user, text);
-        } else {
-          await this.sendHelp(ctx);
+        } else if (user.state === UserState.Idle) {
+          await ctx.reply('Selecione um projeto com /listproject para começar, ou crie um novo com /createproject.');
         }
     }
   }
@@ -165,6 +165,59 @@ export class MessageHandler {
     } catch (error) {
       await ctx.reply(this.formatter.formatError('Failed to process voice message. Please try again.'), { parse_mode: 'MarkdownV2' });
       console.error('Error processing voice message:', error);
+    }
+  }
+
+
+  async handleVideoMessage(ctx: Context): Promise<void> {
+    if (!ctx.chat || !ctx.message) return;
+    const chatId = ctx.chat.id;
+
+    const user = await this.storage.getUserSession(chatId);
+    if (!user) return;
+
+    if (user.state !== UserState.InSession) {
+      await ctx.reply('Você precisa estar em uma sessão ativa para enviar vídeos.');
+      return;
+    }
+
+    try {
+      // Extract video from message
+      let fileId: string | undefined;
+      let caption: string | undefined;
+
+      if ('video' in ctx.message) {
+        fileId = ctx.message.video.file_id;
+        caption = ctx.message.caption;
+      } else if ('animation' in ctx.message) {
+        fileId = (ctx.message as any).animation.file_id;
+        caption = ctx.message.caption;
+      } else if ('video_note' in ctx.message) {
+        fileId = (ctx.message as any).video_note.file_id;
+      }
+
+      if (!fileId) {
+        await ctx.reply('Não foi possível processar o vídeo.');
+        return;
+      }
+
+      await ctx.reply('🎬 Processando vídeo...', KeyboardFactory.createCompletionKeyboard());
+
+      // Download video
+      const fileLink = await ctx.telegram.getFileLink(fileId);
+      const response = await fetch(fileLink.toString());
+      const arrayBuffer = await response.arrayBuffer();
+      const base64Data = Buffer.from(arrayBuffer).toString('base64');
+
+      // Send as image message with video indicator in caption
+      const videoCaption = caption 
+        ? `[VIDEO] ${caption}` 
+        : '[VIDEO] Vídeo enviado pelo usuário para análise';
+
+      await this.agentManager.addImageMessageToStream(chatId, base64Data, 'image/jpeg', videoCaption);
+    } catch (error) {
+      await ctx.reply('Falha ao processar vídeo. Tente novamente.');
+      console.error('Error processing video message:', error);
     }
   }
 
