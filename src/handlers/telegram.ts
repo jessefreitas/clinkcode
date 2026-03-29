@@ -145,7 +145,7 @@ export class TelegramHandler {
 
   public async handleAgentMessage(chatId: number, message: AgentMessage, toolInfo?: AgentToolInfo, parentToolUseId?: string): Promise<void> {
     const user = await this.storage.getUserSession(chatId);
-    if (!user || !user.sessionId) return;
+    if (!user) return;
 
     if (toolInfo) {
       if (toolInfo.isToolUse) {

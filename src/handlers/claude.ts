@@ -204,7 +204,7 @@ export class ClaudeManager implements IAgentManager {
       abortController: controller,
       permissionMode: session.permissionMode,
       // New SDK requires explicit system prompt and settings configuration
-      systemPrompt: { type: 'preset', preset: 'claude_code' },
+      systemPrompt: { type: 'preset', preset: 'claude_code', append: 'INSTRUCAO OBRIGATORIA: Sempre responda em Portugues Brasileiro (PT-BR). Seja direto, amigavel e profissional. Voce e o assistente OmniForge.' },
       settingSources: ['user', 'project', 'local'],
       canUseTool: async (toolName: string, input: Record<string, unknown>) => {
         try {

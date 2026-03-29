@@ -155,7 +155,7 @@ export class CommandHandler {
       const listText = `📋 *Projects (${catalogProjects.length})*\n\nSelect a project or create a new one:`;
       await ctx.reply(listText, { parse_mode: 'Markdown', ...KeyboardFactory.createProjectCatalogKeyboard(catalogProjects) });
     } catch (error) {
-      await ctx.reply(this.formatter.formatError('Failed to load projects. Please try again.'), { parse_mode: 'MarkdownV2' });
+      await ctx.reply(this.formatter.formatError('Falha ao carregar projetos. Tente novamente.'), { parse_mode: 'MarkdownV2' });
       console.error('Error loading projects:', error);
     }
   }
@@ -167,7 +167,7 @@ export class CommandHandler {
     const user = await this.getOrCreateUser(chatId);
 
     if (user.state === UserState.Idle || !user.activeProject) {
-      await ctx.reply(this.formatter.formatError('No active project to exit.'), { parse_mode: 'MarkdownV2' });
+      await ctx.reply(this.formatter.formatError('Nenhum projeto ativo.'), { parse_mode: 'MarkdownV2' });
       return;
     }
 
@@ -184,9 +184,9 @@ export class CommandHandler {
       user.setState(UserState.Idle);
       await this.storage.saveUserSession(user);
       
-      await ctx.reply(`👋 Exited project "${projectName}". You can create a new project or select another one.`);
+      await ctx.reply(`👋 Saiu do projeto "${projectName}". Crie ou selecione outro projeto com /listproject.`);
     } catch (error) {
-      await ctx.reply(this.formatter.formatError('Failed to exit project. Please try again.'), { parse_mode: 'MarkdownV2' });
+      await ctx.reply(this.formatter.formatError('Falha ao sair do projeto. Tente novamente.'), { parse_mode: 'MarkdownV2' });
       console.error('Error exiting project:', error);
     }
   }
@@ -261,9 +261,9 @@ export class CommandHandler {
       await this.storage.saveUserSession(user);
       await this.agentManager.abortQuery(chatId);
 
-      await ctx.reply('✅ Session cleared. Your AI coding agent session has been reset.');
+      await ctx.reply('✅ Sessao limpa. Pode comecar uma nova conversa.');
     } catch (error) {
-      await ctx.reply(this.formatter.formatError('Failed to clear session. Please try again.'), { parse_mode: 'MarkdownV2' });
+      await ctx.reply(this.formatter.formatError('Falha ao limpar sessao. Tente novamente.'), { parse_mode: 'MarkdownV2' });
       console.error('Error clearing session:', error);
     }
   }
@@ -276,7 +276,7 @@ export class CommandHandler {
 
     // Must have an active project to resume a session
     if (!user.activeProject || !user.projectPath) {
-      await ctx.reply(this.formatter.formatError('No active project. Please select a project first with /listproject.'), { parse_mode: 'MarkdownV2' });
+      await ctx.reply(this.formatter.formatError('Nenhum projeto ativo. Use /listproject para selecionar um.'), { parse_mode: 'MarkdownV2' });
       return;
     }
 
@@ -292,7 +292,7 @@ export class CommandHandler {
       const listText = `📋 Agent Sessions (${sessions.length})\n\nSelect a session to resume:`;
       await ctx.reply(listText, KeyboardFactory.createSessionListKeyboard(sessions));
     } catch (error) {
-      await ctx.reply(this.formatter.formatError('Failed to load sessions. Please try again.'), { parse_mode: 'MarkdownV2' });
+      await ctx.reply(this.formatter.formatError('Falha ao carregar sessoes. Tente novamente.'), { parse_mode: 'MarkdownV2' });
       console.error('Error loading sessions:', error);
     }
   }
@@ -307,12 +307,12 @@ export class CommandHandler {
       const success = await this.agentManager.abortQuery(chatId);
 
       if (success) {
-        await ctx.reply('🛑 Query aborted successfully. You can send a new message now.');
+        await ctx.reply('🛑 Consulta abortada. Pode enviar uma nova mensagem.');
       } else {
-        await ctx.reply('ℹ️ No active query to abort. All queries have completed.');
+        await ctx.reply('ℹ️ Nenhuma consulta ativa para abortar.');
       }
     } catch (error) {
-      await ctx.reply(this.formatter.formatError('Failed to abort query. Please try again.'), { parse_mode: 'MarkdownV2' });
+      await ctx.reply(this.formatter.formatError('Falha ao abortar. Tente novamente.'), { parse_mode: 'MarkdownV2' });
     }
   }
 

@@ -46,7 +46,11 @@ export class MessageFormatter {
   }
 
   private async formatAssistantMessage(message: AgentAssistantMessage, permissionMode?: PermissionMode): Promise<string> {
-    let result = '🤖 ';
+    const _bl = Array.isArray(message.message.content) ? message.message.content as any[] : [message.message.content];
+    const _hasTool = _bl.some((b: any) => b && b.type==='tool_use');
+    if (!_hasTool) return '';
+
+    let result = '';
 
     if (message.message.model) {
       result += `**[${message.message.model}]**`;
@@ -204,22 +208,19 @@ export class MessageFormatter {
   }
 
   private formatResultMessage(message: AgentResultMessage): string {
-    if (message.subtype === 'success') {
-      return `✅ **Execution completed** (${Math.round(message.duration_ms / 1000)}s)`;
-    } else {
-      return `❌ **Execution failed**: ${message.subtype}`;
-    }
-  }
-
-  private formatSystemMessage(message: AgentSystemMessage): string {
-    if (message.subtype === 'init') {
-      return `🚀 **System initialization**\n Model: ${message.model}`;
-    }
+    const _m = message as any;
+    if (_m.subtype === 'success' && _m.result) { return String(_m.result); }
     return '';
   }
 
+  
+  private formatSystemMessage(message: AgentSystemMessage): string {
+    return '';
+  }
+
+  
   private formatGenericMessage(message: AgentMessage): string {
-    return format.monospaceBlock(JSON.stringify(message, null, 2), 'json');
+    return '';
   }
 
   /**
