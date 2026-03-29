@@ -142,30 +142,40 @@ export class MessageHandler {
 
     const user = await this.ensureAutoSession(chatId);
 
-    if (!this.config.asr.enabled) {
-      await ctx.reply(this.formatter.formatError('Voice message is not supported. ASR service is not enabled.'), { parse_mode: 'MarkdownV2' });
+    const mistralKey = process.env.MISTRAL_API_KEY;
+    if (!mistralKey) {
+      await ctx.reply(this.formatter.formatError('ASR nao configurado. Defina MISTRAL_API_KEY no .env.'), { parse_mode: 'MarkdownV2' });
       return;
     }
 
     try {
+      await ctx.reply('\u{1F3A4} Transcrevendo audio...');
+
       const fileLink = await ctx.telegram.getFileLink(ctx.message.voice.file_id);
       const audioResponse = await fetch(fileLink.toString());
       const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
 
-      const formData = new FormData();
-      formData.append('file', new Blob([audioBuffer]), 'voice.ogg');
+      const model = process.env.MISTRAL_MODEL ?? 'voxtral-mini-transcribe-2507';
 
-      const asrResponse = await fetch(`${this.config.asr.endpoint}/asr`, {
+      const formData = new FormData();
+      formData.append('model', model);
+      formData.append('file', new Blob([audioBuffer], { type: 'audio/ogg' }), 'voice.ogg');
+
+      const asrResponse = await fetch('https://api.mistral.ai/v1/audio/transcriptions', {
         method: 'POST',
+        headers: {
+          Authorization: `Bearer ${mistralKey}`,
+        },
         body: formData,
       });
 
       if (!asrResponse.ok) {
-        throw new Error(`ASR service returned ${asrResponse.status}`);
+        const errBody = await asrResponse.text();
+        throw new Error(`Voxtral API ${asrResponse.status}: ${errBody}`);
       }
 
       const result = await asrResponse.json() as { text: string };
-      const text = result.text;
+      const text = result.text?.trim();
 
       if (!text) {
         await ctx.reply('Nao foi possivel reconhecer a fala. Tente novamente.');
@@ -173,10 +183,10 @@ export class MessageHandler {
       }
 
       await this.storage.storePendingASR(chatId, text);
-      await ctx.reply(`\u{1F3A4} Speech recognized:`);
+      await ctx.reply('\u{1F3A4} Audio transcrito:');
       await ctx.reply(text, KeyboardFactory.createASRConfirmKeyboard());
     } catch (error) {
-      await ctx.reply(this.formatter.formatError('Falha ao processar mensagem de voz. Tente novamente.'), { parse_mode: 'MarkdownV2' });
+      await ctx.reply(this.formatter.formatError('Falha ao transcrever audio. Tente novamente.'), { parse_mode: 'MarkdownV2' });
       console.error('Error processing voice message:', error);
     }
   }
